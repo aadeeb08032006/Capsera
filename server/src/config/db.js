@@ -1,43 +1,96 @@
-import pkg from 'pg';
-const { Pool } = pkg;
-import config from './env.js';
+import pg from 'pg';
+import { env } from './env.js';
+
+const { Pool } = pg;
 
 /**
- * PostgreSQL connection pool using pg.
+ * Shared PostgreSQL connection pool using `pg` (node-postgres).
  *
- * The pool is created lazily — calling getPool() for the first time
- * creates the pool. The server can start without a database connection;
- * database-dependent routes will fail clearly if PostgreSQL is unavailable.
+ * Proposed Team Standard (see docs/DECISIONS.md — ADR-002):
+ * - Required by faculty to replace MySQL with PostgreSQL while preserving `capsera_db`.
+ * - Always use parameterized queries (`$1, $2, ...` placeholders) via `executeQuery` or `pool.query`.
+ * - Never interpolate user-supplied strings directly into SQL statements.
+ * - Configure session timezone to UTC (`-c timezone=UTC`) for consistent timestamp persistence.
  */
+const poolConfig = env.db.connectionString
+  ? {
+      connectionString: env.db.connectionString,
+      max: env.db.maxConnections,
+      idleTimeoutMillis: env.db.idleTimeoutMs,
+      connectionTimeoutMillis: env.db.connectionTimeoutMs,
+      options: '-c timezone=UTC',
+    }
+  : {
+      host: env.db.host,
+      port: env.db.port,
+      database: env.db.database,
+      user: env.db.user,
+      password: env.db.password,
+      max: env.db.maxConnections,
+      idleTimeoutMillis: env.db.idleTimeoutMs,
+      connectionTimeoutMillis: env.db.connectionTimeoutMs,
+      options: '-c timezone=UTC',
+    };
 
-let pool = null;
+export const pool = new Pool(poolConfig);
 
-export const getPool = () => {
-  if (!pool) {
-    pool = new Pool({
-      host: config.db.host,
-      port: config.db.port,
-      user: config.db.user,
-      password: config.db.password || undefined,
-      database: config.db.name,
-      max: 10,
-      idleTimeoutMillis: 30000,
-    });
-  }
-  return pool;
-};
+pool.on('error', (err) => {
+  console.error('[CAPSERA PostgreSQL Pool Error]:', err?.message || 'Unexpected idle client error');
+});
 
 /**
- * Test database connectivity.
- * Returns { connected: true } on success, or { connected: false, error } on failure.
+ * Execute a parameterized PostgreSQL query (`$1, $2, ...` placeholders).
+ *
+ * @param {string} text - Parameterized SQL statement with `$1, $2, ...` placeholders
+ * @param {Array<unknown>} [params=[]] - Bound parameter values
+ * @returns {Promise<pg.QueryResult>}
  */
-export const testConnection = async () => {
+export async function executeQuery(text, params = []) {
+  return pool.query(text, params);
+}
+
+/**
+ * Execute a callback inside a PostgreSQL transaction (`BEGIN` / `COMMIT` / `ROLLBACK`).
+ * Required by PRD Section 8.3 for multi-write flows (e.g., assessment scoring, certificate issuance).
+ *
+ * @template T
+ * @param {(client: pg.PoolClient) => Promise<T>} work
+ * @returns {Promise<T>}
+ */
+export async function withTransaction(work) {
+  const client = await pool.connect();
   try {
-    const client = await getPool().connect();
-    await client.query('SELECT 1');
-    client.release();
-    return { connected: true };
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
   } catch (error) {
-    return { connected: false, error: error.message };
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-};
+}
+
+/**
+ * Lightweight connectivity check against the configured PostgreSQL database (`capsera_db`).
+ *
+ * @returns {Promise<{ connected: boolean, engine: string, database: string, errorCode?: string }>}
+ */
+export async function checkDatabaseConnection() {
+  try {
+    await pool.query('SELECT 1 AS ok');
+    return {
+      connected: true,
+      engine: 'postgresql',
+      database: env.db.database,
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      engine: 'postgresql',
+      database: env.db.database,
+      errorCode: error?.code || 'DB_CONNECTION_FAILED',
+    };
+  }
+}

@@ -1,35 +1,66 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
-import config from './config/env.js';
-import apiRoutes from './routes/index.js';
-import notFound from './middleware/notFound.js';
-import errorHandler from './middleware/errorHandler.js';
+import { env } from './config/env.js';
+import { checkDatabaseConnection } from './config/db.js';
+import { sendSuccess } from './shared/response.js';
+import { notFoundHandler } from './middleware/notFound.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
 
-// ─── Security Headers ───
-app.use(helmet());
-
-// ─── CORS ───
+// Core middleware
 app.use(
   cors({
-    origin: config.cors.origin,
+    origin: env.clientOrigin,
     credentials: true,
-  })
+  }),
 );
+app.use(express.json({ limit: '1mb' }));
 
-// ─── Body Parsing ───
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Canonical /api/v1 router
+const apiRouter = express.Router();
 
-// ─── API Routes ───
-app.use('/api/v1', apiRoutes);
+/**
+ * GET /api/v1/health
+ * Foundation health endpoint. Pass `?db=true` to test PostgreSQL connectivity.
+ */
+apiRouter.get('/health', async (req, res, next) => {
+  try {
+    const shouldCheckDb = req.query.db === 'true' || req.query.db === '1';
+    let database = {
+      checked: false,
+      engine: 'postgresql',
+      status: 'SKIPPED',
+      name: env.db.database,
+    };
 
-// ─── 404 Handler ───
-app.use(notFound);
+    if (shouldCheckDb) {
+      const dbResult = await checkDatabaseConnection();
+      database = {
+        checked: true,
+        engine: dbResult.engine,
+        status: dbResult.connected ? 'CONNECTED' : 'UNAVAILABLE',
+        name: dbResult.database,
+        ...(dbResult.errorCode ? { errorCode: dbResult.errorCode } : {}),
+      };
+    }
 
-// ─── Centralized Error Handler ───
+    return sendSuccess(res, {
+      service: 'capsera-api',
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      database,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Mount /api/v1 prefix (Feature module routers will be registered here by Members 1–4)
+app.use(env.apiPrefix, apiRouter);
+
+// Fallback & error handlers
+app.use(notFoundHandler);
 app.use(errorHandler);
 
 export default app;
