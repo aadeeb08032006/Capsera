@@ -80,6 +80,15 @@
 | `429 Too Many Requests` | Rate limit exceeded |
 | `500 Internal Server Error` | Unexpected server error (never expose raw SQL errors or secrets) |
 
+| Code | Status |
+|---|---|
+| `VALIDATION_ERROR` | 400 |
+| `UNAUTHENTICATED`, `INVALID_CREDENTIALS` | 401 |
+| `FORBIDDEN`, `ACCOUNT_PENDING`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED` | 403 |
+| `USER_NOT_FOUND` | 404 |
+| `EMAIL_ALREADY_REGISTERED`, `INVALID_STATUS_TRANSITION`, `ROLE_CHANGE_NOT_ALLOWED` | 409 |
+| `RATE_LIMITED` | 429 |
+
 ---
 
 ## 4. Canonical Enum Values (Established by PRD Section 10.3)
@@ -123,28 +132,82 @@
 
 All endpoints below are mandated by PRD Section 11.4. Their exact request/response schemas are **UNRESOLVED** pending module owner specification and team review.
 
-### 6.1 Auth & Account Administration (Owner: Member 1)
-| Method & Path | Access | Contract Status |
+### 6.1 Auth & Account Administration (Owner: Member 1, PROPOSED)
+
+**Common rules:** ids are strings. `email` is trimmed and lowercased by the server. Responses never contain `passwordHash`. Protected routes need `Authorization: Bearer <token>`; the server re-reads role and status from the database on every request.
+
+#### POST /api/v1/auth/signup (public)
+Request: `{ "fullName": "Asha Rao", "email": "asha@example.com", "password": "Passw0rdX", "role": "TRAINEE" }`
+- `role`: `TRAINEE` or `TRAINER` only. `ADMIN` or anything else returns 400.
+- `fullName`: 1-150 characters. `email`: valid format, at most 255 characters. `password`: 8-72 bytes, at least one letter and one number.
+- Response `201`: `{ "user": { "id": "12", "fullName": "...", "email": "...", "role": "TRAINEE", "status": "PENDING", "createdAt": "..." } }`
+- No token is issued (the account is `PENDING`).
+- Errors: 400 `VALIDATION_ERROR`, 409 `EMAIL_ALREADY_REGISTERED`, 429 `RATE_LIMITED`.
+
+#### POST /api/v1/auth/login (public)
+Request: `{ "email": "...", "password": "..." }`
+- Response `200`: `{ "token": "<jwt>", "expiresIn": 3600, "user": { "id", "fullName", "email", "role", "status" } }`
+- Wrong email or password: 401 `INVALID_CREDENTIALS` (same message for both).
+- Correct password but account not active: 403 `ACCOUNT_PENDING`, `ACCOUNT_REJECTED` or `ACCOUNT_SUSPENDED`.
+- Errors: 400 `VALIDATION_ERROR`, 429 `RATE_LIMITED`.
+
+#### POST /api/v1/auth/logout (authenticated)
+Response `200`: `{ "loggedOut": true }`. The server keeps no session; the client discards the token.
+
+#### GET /api/v1/auth/me (authenticated, ACTIVE)
+Response `200`: `{ "user": { "id", "fullName", "email", "role", "status", "createdAt" } }`
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_*`.
+
+#### GET /api/v1/admin/users (ADMIN)
+Query: `role`, `status`, `search` (matches name or email, case-insensitive), `page`, `pageSize`. Sorted by `createdAt` descending.
+Response `200` (paginated): items are `{ "id", "fullName", "email", "role", "status", "approvedBy", "approvedAt", "createdAt" }`.
+Errors: 400 invalid filter value, 401, 403 `FORBIDDEN`.
+
+#### PATCH /api/v1/admin/users/:userId/status (ADMIN)
+Request: `{ "status": "ACTIVE", "reason": "optional, max 500 chars" }`
+Allowed transitions:
+
+| From | To | Audit event |
 |---|---|---|
-| `POST /api/v1/auth/signup` | Public (`TRAINEE` or `TRAINER` only; starts `PENDING`) | **UNRESOLVED:** Exact password policy rules & response fields |
-| `POST /api/v1/auth/login` | Public | **UNRESOLVED:** Cookie vs token transport (see `OPEN-002` in `DECISIONS.md`) |
-| `POST /api/v1/auth/logout` | Authenticated | **UNRESOLVED:** Session/cookie clearing details |
-| `GET /api/v1/auth/me` | Authenticated (`ACTIVE`) | **UNRESOLVED:** Exact user summary fields |
-| `GET /api/v1/admin/users` | `ADMIN` | **UNRESOLVED:** Filter query params (`role`, `status`, search) |
-| `PATCH /api/v1/admin/users/:userId/status` | `ADMIN` | **UNRESOLVED:** Request body & audit trail fields |
-| `PATCH /api/v1/admin/users/:userId/role` | `ADMIN` | **UNRESOLVED:** Permitted role transitions & payload |
+| `PENDING` | `ACTIVE` (approve), sets `approvedBy` / `approvedAt` | `USER_APPROVED` |
+| `PENDING` | `REJECTED` | `USER_REJECTED` |
+| `ACTIVE` | `SUSPENDED` | `USER_SUSPENDED` |
+| `SUSPENDED` | `ACTIVE` | `USER_REACTIVATED` |
+
+Anything else returns 409 `INVALID_STATUS_TRANSITION`. An admin cannot change their own status (403 `FORBIDDEN`). The update and its audit row are written in one transaction.
+Response `200`: `{ "user": { ...same fields as the admin list item } }`. Errors: 400, 401, 403, 404 `USER_NOT_FOUND`, 409.
+
+#### PATCH /api/v1/admin/users/:userId/role (ADMIN)
+Request: `{ "role": "TRAINER" }`
+- Only `TRAINEE` or `TRAINER`, and only while the user is `PENDING`. Otherwise 409 `ROLE_CHANGE_NOT_ALLOWED`. `ADMIN` can never be assigned through the API.
+- Writes `USER_ROLE_CHANGED` with `{ previousRole, newRole }` in the same transaction.
+- Response `200`: same user object. Errors: 400, 401, 403, 404, 409.
 
 ### 6.2 Profiles & Competency Mapping (Owners: Member 1 for Profiles, Member 4 for Skills & Recommendations)
 | Method & Path | Access | Contract Status |
 |---|---|---|
-| `GET /api/v1/profiles/me` | Authenticated (`ACTIVE`) | **UNRESOLVED (Member 1):** Combined or role-specific profile payload |
-| `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | **UNRESOLVED (Member 1):** Exact field validation rules |
-| `PUT /api/v1/profiles/me/trainer` | `TRAINER` | **UNRESOLVED (Member 1):** Exact field validation rules |
+| `GET /api/v1/profiles/me` | Authenticated (`ACTIVE`) | Specified below (Member 1, PROPOSED) |
+| `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | Specified below (Member 1, PROPOSED) |
+| `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
 | `GET /api/v1/skills` | Authenticated (`ACTIVE`) | **UNRESOLVED (Member 4):** Category filter / pagination details |
 | `POST /api/v1/skills` | `ADMIN` | **UNRESOLVED (Member 4):** Skill creation payload (`name`, `category`) |
 | `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
+
+#### GET /api/v1/profiles/me (authenticated, ACTIVE)
+Response `200`: `{ "user": { "id", "fullName", "email", "role" }, "profile": { ... } | null }`.
+`profile` is `null` until first saved. Admins get `profile: null`. Skills are not included; they come from Member 4's endpoints.
+
+#### PUT /api/v1/profiles/me/trainee (TRAINEE)
+Request (all optional strings or null): `headline` (max 200), `organization` (max 200), `biography`, `qualifications`, `workExperience`, `interests`, `externalCertifications`.
+Creates the profile on first save, updates it after. Response `200`: `{ "profile": { ...all fields above, "updatedAt" } }`.
+
+#### PUT /api/v1/profiles/me/trainer (TRAINER)
+Request: `headline` (max 200), `organization` (max 200), `biography`, `qualifications`, `workExperience`, `subjectExpertise` (max 255), `yearsOfExperience` (number from 0 to 80, one decimal).
+Response `200`: `{ "profile": { ...fields, "updatedAt" } }`.
+
+Both PUT endpoints: unknown fields are rejected with 400; users can edit only their own profile; the wrong role gets 403.
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |

@@ -151,6 +151,11 @@ Every column, constraint, or cross-module lifecycle rule not explicitly prescrib
 - **`SCHEMA-M1-03` — Role-Transition & Mutual-Exclusion Profile Policy:**
   - Confirm backend enforcement preventing dual rows in `trainee_profiles` + `trainer_profiles` and rejecting `PATCH /api/v1/admin/users/:userId/role` (`409 Conflict`) whenever role-bound profile or domain records (`courses`, `trainer_skills`, `enrollments`, `trainee_skills`, `assessment_attempts`, `feedback`, `certificates`, `announcements`) already exist — or restricting role edits strictly to `status = 'PENDING'` users before approval.
 
+#### Member 1 Responses (proposed)
+- **SCHEMA-M1-01:** Confirmed. JSON key is `fullName`; SQL column stays `full_name`. Keep `uq_users_email_ci` and `approved_by` / `approved_at`. The server trims and lowercases email before every insert and lookup. API ids are returned as strings (BIGINT), so every module follows the same rule.
+- **SCHEMA-M1-02:** Confirmed. `qualifications` and `work_experience` stay `TEXT`; keep `trainee_profiles.external_certifications`. `yearsOfExperience` is returned as a number.
+- **SCHEMA-M1-03:** Role changes are allowed only while `status = 'PENDING'`; any other role-change request returns `409`. A user never has both profile rows. `PUT /profiles/me/*` creates the profile row on first save (upsert).
+
 #### Member 2 Review Items (`003_create_courses_lessons_and_enrollments.sql` — `courses`, `lessons`, `learning_resources`, `enrollments`, `lesson_progress`)
 - **`SCHEMA-M2-01` — `courses` Draft vs Published Fields, Lifecycle Timestamps & Level Values:**
   - Confirm optional `summary VARCHAR(500)`, `level IN ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')`, `chk_courses_published_fields`, and `chk_courses_lifecycle_timestamps` (`PUBLISHED` requires `published_at IS NOT NULL AND archived_at IS NULL`; `ARCHIVED` requires `archived_at IS NOT NULL` and `>= published_at`).
@@ -391,8 +396,17 @@ End of PRD — Version 1.0
 - **Action Required:** Team must confirm whether to keep native `fetch` via `apiClient.js` or install `axios` before feature modules are built.
 
 ### OPEN-002: Authentication Transport & Password Hashing Library
-- **PRD Reference:** Section 6.1, Section 8.1 (*"Hash passwords using bcrypt or Argon2... Use HTTPS in deployment and secure HttpOnly cookies or an equivalently secure, consistently implemented authentication design."*)
-- **Action Required:** Member 1 to propose the exact token/session mechanism (e.g., JWT in `HttpOnly` cookie with CSRF protection vs Authorization header) and password hashing library (`bcrypt` vs `argon2`).
+- **Status:** PROPOSED by Member 1 (pending team approval)
+- **PRD Reference:** Sections 6.1 and 8.1.
+- **Proposal:**
+  1. **Transport:** JWT (HS256) sent as `Authorization: Bearer <token>`. No cookies, so no CSRF handling is needed, and it works with a separately hosted frontend and API (PRD 9.1 deployment). The frontend keeps the token in `sessionStorage`.
+  2. **Token contents:** `sub` (user id as string) only. Role and status are read from the database on every request, so suspensions and role changes take effect immediately.
+  3. **Lifetime:** 1 hour, no refresh token in the MVP. `JWT_SECRET` is required at startup.
+  4. **Password hashing:** `bcryptjs`, cost factor 12.
+  5. **Password policy:** minimum 8 characters, at least one letter and one number, maximum 72 bytes (bcrypt limit).
+  6. **Login errors:** wrong email or password returns `401` with one generic message. Only after the password is verified do we return `403` for `PENDING`, `REJECTED` or `SUSPENDED`, so the API cannot be used to discover which emails exist.
+  7. **Logout:** the client discards the token. The server endpoint returns `200` and holds no state. Known limitation: a stolen token stays valid until expiry. Documented as an MVP limit.
+  8. **Rate limiting:** login and signup limited with `express-rate-limit` (`429`). `helmet` added for security headers. Request body limit for auth routes is small (10 kb).
 
 ### OPEN-003: Request Validation Strategy
 - **PRD Reference:** Section 9.1 (*"Validation: use one agreed schema validation library or shared validation helpers."*)
