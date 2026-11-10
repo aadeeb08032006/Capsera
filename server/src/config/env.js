@@ -9,11 +9,18 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim() === '') {
+  throw new Error('JWT_SECRET environment variable is required at startup');
+}
+
 export const env = Object.freeze({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number.parseInt(process.env.PORT || '5000', 10),
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+  bcryptCost: Number.parseInt(process.env.BCRYPT_COST || '12', 10),
   db: Object.freeze({
     connectionString: process.env.DATABASE_URL || '',
     host: process.env.DB_HOST || '127.0.0.1',
