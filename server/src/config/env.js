@@ -1,39 +1,28 @@
-import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 
-/**
- * Centralized environment configuration with validation.
- *
- * Required variables will cause the server to report a clear error
- * at startup if they are missing. Optional variables have defaults.
- */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Used by team members when adding required env vars (e.g., JWT_SECRET)
-// eslint-disable-next-line no-unused-vars
-const required = (key) => {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-};
+// Load server/.env first, falling back to root .env if present
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-const optional = (key, fallback) => process.env[key] || fallback;
-
-const config = {
-  env: optional('NODE_ENV', 'development'),
-  port: parseInt(optional('PORT', '5000'), 10),
-
-  db: {
-    host: optional('DB_HOST', 'localhost'),
-    port: parseInt(optional('DB_PORT', '5432'), 10),
-    user: optional('DB_USER', 'postgres'),
-    password: optional('DB_PASSWORD', ''),
-    name: optional('DB_NAME', 'capsera_db'),
-  },
-
-  cors: {
-    origin: optional('CORS_ORIGIN', 'http://localhost:5173'),
-  },
-};
-
-export default config;
+export const env = Object.freeze({
+  nodeEnv: process.env.NODE_ENV || 'development',
+  port: Number.parseInt(process.env.PORT || '5000', 10),
+  apiPrefix: process.env.API_PREFIX || '/api/v1',
+  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  db: Object.freeze({
+    connectionString: process.env.DATABASE_URL || '',
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: Number.parseInt(process.env.DB_PORT || '5432', 10),
+    database: process.env.DB_NAME || 'capsera_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    maxConnections: Number.parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),
+    idleTimeoutMs: Number.parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000', 10),
+    connectionTimeoutMs: Number.parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '5000', 10),
+  }),
+});

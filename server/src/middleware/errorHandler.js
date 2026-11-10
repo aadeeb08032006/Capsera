@@ -1,30 +1,27 @@
-/**
- * Centralized error-handling middleware.
- *
- * All errors thrown or passed via next(err) end up here.
- * Returns the standard CAPSERA error envelope:
- *   { success: false, error: { code, message } }
- */
+import { sendError } from '../shared/response.js';
 
-const errorHandler = (err, _req, res, _next) => {
-  // Log the full error in development; keep production logs minimal
-  if (process.env.NODE_ENV !== 'production') {
-    console.error('[Error]', err);
-  } else {
-    console.error('[Error]', err.message);
+/**
+ * Global error handler enforcing PRD Section 11.2 & 11.3:
+ * - Returns canonical error envelope
+ * - Never leaks raw SQL statements or internal secrets in 500 responses
+ */
+export function errorHandler(err, _req, res, _next) {
+  const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+  const isServerError = statusCode >= 500;
+
+  if (isServerError) {
+    console.error('[CAPSERA API Error]:', err?.message || 'Unexpected error');
   }
 
-  const statusCode = err.statusCode || 500;
-  const code = err.code || 'INTERNAL_ERROR';
-  const message =
-    statusCode === 500 && process.env.NODE_ENV === 'production'
-      ? 'An unexpected error occurred'
-      : err.message || 'An unexpected error occurred';
+  return sendError(
+    res,
+    {
+      code: isServerError ? 'INTERNAL_SERVER_ERROR' : err?.code || 'REQUEST_ERROR',
+      message: isServerError
+        ? 'An unexpected server error occurred.'
+        : err?.message || 'Request could not be processed.',
+    },
+    statusCode,
+  );
+}
 
-  res.status(statusCode).json({
-    success: false,
-    error: { code, message },
-  });
-};
-
-export default errorHandler;
