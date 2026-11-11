@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { env } from './config/env.js';
 import { checkDatabaseConnection } from './config/db.js';
 import { sendSuccess } from './shared/response.js';
@@ -9,6 +10,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 const app = express();
 
 // Core middleware
+app.use(helmet());
 app.use(
   cors({
     origin: env.clientOrigin,
