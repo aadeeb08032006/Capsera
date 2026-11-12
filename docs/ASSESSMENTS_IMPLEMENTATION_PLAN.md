@@ -22,7 +22,7 @@ All Member 3 backend code follows the team conventions established on `main`:
 | Milestone | Scope | Branch / Status |
 |---|---|---|
 | **Milestone 0** | Sync with `origin/main`, sign off `SCHEMA-M3-*` & `OPEN-005`, specify §6.4 in `API_CONTRACT.md` | **Done** (`docs/member3-decisions-and-api`) |
-| **Milestone 1** | Zod validation schemas + course ownership / active enrollment guard helpers + unit tests | Pending |
+| **Milestone 1** | Zod validation schemas + course ownership / active enrollment guard helpers + unit tests | **Done** (`feature/assessments-m1-validation-auth`) |
 | **Milestone 2** | Assessment CRUD & transactional publish (`>= 1` question check, lock when attempts exist) + tests | Pending |
 | **Milestone 3** | MCQ question bank CRUD + strict trainee answer-key sanitization (`correctOption` / `explanation` stripped) + tests | Pending |
 | **Milestone 4** | Attempt initiation (`POST /assessments/:assessmentId/attempts`), deadline/attempt-cap checks, stale expiry sweep + tests | Pending |
