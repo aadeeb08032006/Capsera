@@ -192,7 +192,7 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
 | `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
 | `PUT /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED) |
-| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
+| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED) |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
 
 #### GET /api/v1/profiles/me (authenticated, ACTIVE)
@@ -284,6 +284,42 @@ Response `200`:
         "skillName": "Node.js",
         "category": "Backend",
         "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### PUT /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED)
+Replaces the authenticated trainer's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing trainer skill mappings. Concurrent requests for the same trainer are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 4, "yearsOfExperience": 5.5 },
+    { "skillId": "2", "proficiency": 3, "yearsOfExperience": 2.0 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency, yearsOfExperience }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- `yearsOfExperience`: required finite number from `0` to `80` with at most 1 decimal place (`NUMERIC(4,1)`).
+- Unknown fields (such as `trainerId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
       }
     ]
   }

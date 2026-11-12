@@ -6,6 +6,7 @@ import {
   createSkillHandler,
   listSkillsHandler,
   replaceMyTraineeSkillsHandler,
+  replaceMyTrainerSkillsHandler,
 } from './skills.controller.js';
 
 const router = Router();
@@ -21,6 +22,12 @@ profileSkillsRoutes.put(
   authenticate,
   requireRole(ROLES.TRAINEE),
   replaceMyTraineeSkillsHandler,
+);
+profileSkillsRoutes.put(
+  '/me/trainer-skills',
+  authenticate,
+  requireRole(ROLES.TRAINER),
+  replaceMyTrainerSkillsHandler,
 );
 
 export default router;

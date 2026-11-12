@@ -6,6 +6,7 @@ import {
   findExistingSkillIds,
   lockUserForSkillUpdate,
   replaceTraineeSkillsInTx,
+  replaceTrainerSkillsInTx,
 } from './skills.repository.js';
 
 function toIsoString(value) {
@@ -32,6 +33,13 @@ function mapTraineeSkillRow(row) {
     skillName: row.skillName,
     category: row.category,
     proficiency: Number(row.proficiency),
+  };
+}
+
+function mapTrainerSkillRow(row) {
+  return {
+    ...mapTraineeSkillRow(row),
+    yearsOfExperience: Number(row.yearsOfExperience),
   };
 }
 
@@ -86,16 +94,13 @@ export async function createSkill({ name, category }) {
 }
 
 /**
- * Atomically replace all skill mappings for the authenticated trainee.
- * Serializes concurrent replacements for the same trainee using FOR UPDATE on `users`.
- *
- * @param {string} traineeId
- * @param {Array<{ skillId: string, proficiency: number }>} skills
+ * Shared transactional replace-all workflow for trainee and trainer skill mappings.
+ * Serializes concurrent replacements for the same user using FOR UPDATE on `users`.
  */
-export async function replaceMyTraineeSkills(traineeId, skills) {
+async function executeReplaceUserSkills(userId, skills, replaceInTx, mapRow) {
   try {
     return await withTransaction(async (client) => {
-      const lockedUser = await lockUserForSkillUpdate(traineeId, client);
+      const lockedUser = await lockUserForSkillUpdate(userId, client);
       if (!lockedUser) {
         throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
       }
@@ -113,8 +118,8 @@ export async function replaceMyTraineeSkills(traineeId, skills) {
         }
       }
 
-      const rows = await replaceTraineeSkillsInTx(traineeId, skills, client);
-      return rows.map(mapTraineeSkillRow);
+      const rows = await replaceInTx(userId, skills, client);
+      return rows.map(mapRow);
     });
   } catch (error) {
     if (error instanceof AppError) {
@@ -125,5 +130,25 @@ export async function replaceMyTraineeSkills(traineeId, skills) {
     }
     throw new AppError(500, 'INTERNAL_SERVER_ERROR', 'Database operation failed');
   }
+}
+
+/**
+ * Atomically replace all skill mappings for the authenticated trainee.
+ *
+ * @param {string} traineeId
+ * @param {Array<{ skillId: string, proficiency: number }>} skills
+ */
+export async function replaceMyTraineeSkills(traineeId, skills) {
+  return executeReplaceUserSkills(traineeId, skills, replaceTraineeSkillsInTx, mapTraineeSkillRow);
+}
+
+/**
+ * Atomically replace all skill mappings for the authenticated trainer.
+ *
+ * @param {string} trainerId
+ * @param {Array<{ skillId: string, proficiency: number, yearsOfExperience: number }>} skills
+ */
+export async function replaceMyTrainerSkills(trainerId, skills) {
+  return executeReplaceUserSkills(trainerId, skills, replaceTrainerSkillsInTx, mapTrainerSkillRow);
 }
 

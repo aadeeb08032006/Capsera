@@ -5,8 +5,14 @@ import {
   listSkillsQuerySchema,
   parseWithSchema,
   replaceTraineeSkillsBodySchema,
+  replaceTrainerSkillsBodySchema,
 } from './skills.validation.js';
-import { createSkill, listSkills, replaceMyTraineeSkills } from './skills.service.js';
+import {
+  createSkill,
+  listSkills,
+  replaceMyTraineeSkills,
+  replaceMyTrainerSkills,
+} from './skills.service.js';
 
 export const listSkillsHandler = asyncHandler(async (req, res) => {
   const filters = parseWithSchema(listSkillsQuerySchema, req.query ?? {});
@@ -23,6 +29,12 @@ export const createSkillHandler = asyncHandler(async (req, res) => {
 export const replaceMyTraineeSkillsHandler = asyncHandler(async (req, res) => {
   const { skills } = parseWithSchema(replaceTraineeSkillsBodySchema, req.body ?? {});
   const savedSkills = await replaceMyTraineeSkills(req.user.id, skills);
+  return sendSuccess(res, { skills: savedSkills });
+});
+
+export const replaceMyTrainerSkillsHandler = asyncHandler(async (req, res) => {
+  const { skills } = parseWithSchema(replaceTrainerSkillsBodySchema, req.body ?? {});
+  const savedSkills = await replaceMyTrainerSkills(req.user.id, skills);
   return sendSuccess(res, { skills: savedSkills });
 });
 

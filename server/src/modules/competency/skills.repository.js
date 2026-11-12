@@ -156,3 +156,48 @@ export async function replaceTraineeSkillsInTx(traineeId, skills, client) {
 
   return result?.rows ?? [];
 }
+
+/**
+ * Atomically replaces all skill mappings for a trainer within an active transaction.
+ *
+ * @param {string} trainerId
+ * @param {Array<{ skillId: string, proficiency: number, yearsOfExperience: number }>} skills
+ * @param {import('pg').PoolClient} client
+ */
+export async function replaceTrainerSkillsInTx(trainerId, skills, client) {
+  await client.query(
+    'DELETE FROM trainer_skills WHERE trainer_id = $1',
+    [trainerId],
+  );
+
+  if (skills.length === 0) {
+    return [];
+  }
+
+  const skillIds = skills.map((item) => item.skillId);
+  const proficiencies = skills.map((item) => item.proficiency);
+  const yearsList = skills.map((item) => item.yearsOfExperience);
+
+  const result = await client.query(
+    `WITH inserted AS (
+       INSERT INTO trainer_skills (trainer_id, skill_id, proficiency, years_of_experience)
+       SELECT $1, skill_id, proficiency, years_of_experience
+       FROM UNNEST($2::bigint[], $3::smallint[], $4::numeric(4,1)[])
+         AS t(skill_id, proficiency, years_of_experience)
+       RETURNING id, trainer_id, skill_id, proficiency, years_of_experience
+     )
+     SELECT
+       i.id,
+       i.skill_id AS "skillId",
+       s.name AS "skillName",
+       s.category,
+       i.proficiency,
+       i.years_of_experience AS "yearsOfExperience"
+     FROM inserted i
+     JOIN skills s ON s.id = i.skill_id
+     ORDER BY LOWER(s.name) ASC, s.id ASC`,
+    [trainerId, skillIds, proficiencies, yearsList],
+  );
+
+  return result?.rows ?? [];
+}
