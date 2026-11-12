@@ -190,7 +190,7 @@ Request: `{ "role": "TRAINER" }`
 | `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
 | `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
-| `POST /api/v1/skills` | `ADMIN` | **UNRESOLVED (Member 4):** Skill creation payload (`name`, `category`) |
+| `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
 | `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
@@ -235,6 +235,27 @@ Response `200` (paginated via `sendPaginated()`):
 }
 ```
 Errors: 400 `VALIDATION_ERROR` (blank/oversized `category` or invalid `page`/`pageSize`), 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/skills (ADMIN, PROPOSED)
+Request: `{ "name": "Node.js", "category": "Backend" }`
+- `name`: required string, trimmed, 1–120 characters, case-insensitive unique (`uq_skills_name_ci`).
+- `category`: required string, trimmed, 1–120 characters.
+- Unknown fields are rejected with `400 VALIDATION_ERROR`.
+Response `201`:
+```json
+{
+  "success": true,
+  "data": {
+    "skill": {
+      "id": "1",
+      "name": "Node.js",
+      "category": "Backend",
+      "createdAt": "2026-11-03T09:00:00.000Z"
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 409 `CONFLICT` (case-insensitive duplicate skill name).
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |

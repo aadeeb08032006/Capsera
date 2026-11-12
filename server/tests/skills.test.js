@@ -297,3 +297,197 @@ describe('Skills API (GET /api/v1/skills)', () => {
   });
 });
 
+describe('Skills API (POST /api/v1/skills)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Auth, Active Status & Role Guards', () => {
+    it('rejects missing or invalid JWT (401 UNAUTHENTICATED)', async () => {
+      const missingRes = await request(app)
+        .post('/api/v1/skills')
+        .send({ name: 'Node.js', category: 'Backend' });
+
+      expect(missingRes.status).toBe(401);
+      expect(missingRes.body.error.code).toBe('UNAUTHENTICATED');
+
+      const invalidRes = await request(app)
+        .post('/api/v1/skills')
+        .set('Authorization', 'Bearer invalid.jwt.token')
+        .send({ name: 'Node.js', category: 'Backend' });
+
+      expect(invalidRes.status).toBe(401);
+      expect(invalidRes.body.error.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('rejects non-ACTIVE ADMIN users (403 ACCOUNT_PENDING / ACCOUNT_SUSPENDED / ACCOUNT_REJECTED)', async () => {
+      const cases = [
+        { status: 'PENDING', expectedCode: 'ACCOUNT_PENDING' },
+        { status: 'SUSPENDED', expectedCode: 'ACCOUNT_SUSPENDED' },
+        { status: 'REJECTED', expectedCode: 'ACCOUNT_REJECTED' },
+      ];
+
+      for (const { status, expectedCode } of cases) {
+        mockAuthUser({ id: '50', role: 'ADMIN', status });
+
+        const res = await request(app)
+          .post('/api/v1/skills')
+          .set('Authorization', `Bearer ${makeToken('50')}`)
+          .send({ name: 'Node.js', category: 'Backend' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe(expectedCode);
+      }
+    });
+
+    it('denies access to TRAINEE and TRAINER roles (403 FORBIDDEN)', async () => {
+      for (const role of ['TRAINEE', 'TRAINER']) {
+        mockAuthUser({ id: '25', role, status: 'ACTIVE' });
+
+        const res = await request(app)
+          .post('/api/v1/skills')
+          .set('Authorization', `Bearer ${makeToken('25')}`)
+          .send({ name: 'Node.js', category: 'Backend' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe('FORBIDDEN');
+      }
+    });
+  });
+
+  describe('Validation, Creation & Conflict Handling', () => {
+    it('creates a skill for ACTIVE ADMIN, trims fields, and returns 201 with normalized DTO', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeSkillRow({
+            id: 42,
+            name: 'PostgreSQL',
+            category: 'Database',
+            createdAt: new Date('2026-11-13T01:45:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/skills')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ name: '  PostgreSQL  ', category: '  Database  ' });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({
+        success: true,
+        data: {
+          skill: {
+            id: '42',
+            name: 'PostgreSQL',
+            category: 'Database',
+            createdAt: '2026-11-13T01:45:00.000Z',
+          },
+        },
+      });
+
+      const insertCall = executeQuery.mock.calls[1];
+      expect(insertCall[0]).toContain('INSERT INTO skills (name, category)');
+      expect(insertCall[0]).toContain('VALUES ($1, $2)');
+      expect(insertCall[1]).toEqual(['PostgreSQL', 'Database']);
+    });
+
+    it('rejects missing, blank, oversized, non-string, and unknown fields (400 VALIDATION_ERROR)', async () => {
+      const invalidPayloads = [
+        {},
+        { name: 'Node.js' },
+        { category: 'Backend' },
+        { name: '   ', category: 'Backend' },
+        { name: 'Node.js', category: '   ' },
+        { name: 'a'.repeat(121), category: 'Backend' },
+        { name: 'Node.js', category: 'b'.repeat(121) },
+        { name: 123, category: 'Backend' },
+        { name: 'Node.js', category: 'Backend', extraField: 'unexpected' },
+      ];
+
+      for (const payload of invalidPayloads) {
+        mockAuthUser({ id: '1', role: 'ADMIN', status: 'ACTIVE' });
+
+        const res = await request(app)
+          .post('/api/v1/skills')
+          .set('Authorization', `Bearer ${makeToken('1')}`)
+          .send(payload);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+    });
+
+    it('returns 409 CONFLICT on duplicate or case-insensitive duplicate skill names (uq_skills_name_ci)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN', status: 'ACTIVE' });
+      const uniqueViolation = new Error(
+        'duplicate key value violates unique constraint "uq_skills_name_ci"',
+      );
+      uniqueViolation.code = '23505';
+      uniqueViolation.constraint = 'uq_skills_name_ci';
+      executeQuery.mockRejectedValueOnce(uniqueViolation);
+
+      const res = await request(app)
+        .post('/api/v1/skills')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ name: 'node.js', category: 'Backend' });
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'CONFLICT',
+          message: 'A skill with this name already exists',
+        },
+      });
+    });
+
+    it('does not misclassify unrelated 23505 errors as skill-name conflict', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN', status: 'ACTIVE' });
+      const otherUniqueViolation = new Error(
+        'duplicate key value violates unique constraint "skills_pkey"',
+      );
+      otherUniqueViolation.code = '23505';
+      otherUniqueViolation.constraint = 'skills_pkey';
+      executeQuery.mockRejectedValueOnce(otherUniqueViolation);
+
+      const res = await request(app)
+        .post('/api/v1/skills')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ name: 'Docker', category: 'DevOps' });
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected server error occurred.',
+        },
+      });
+    });
+
+    it('masks unexpected database errors behind 500 INTERNAL_SERVER_ERROR', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN', status: 'ACTIVE' });
+      executeQuery.mockRejectedValueOnce(new Error('connection terminated unexpectedly'));
+
+      const res = await request(app)
+        .post('/api/v1/skills')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ name: 'Docker', category: 'DevOps' });
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected server error occurred.',
+        },
+      });
+    });
+  });
+});
+

@@ -59,3 +59,25 @@ export async function findAllSkills({
     totalItems,
   };
 }
+
+/**
+ * Inserts a new skill into the canonical skill catalogue.
+ * Uniqueness (including case-insensitive duplicates) is enforced by `uq_skills_name_ci`.
+ *
+ * @param {{ name: string, category: string }} skill
+ * @returns {Promise<{ id: string | number, name: string, category: string, createdAt: Date | string } | null>}
+ */
+export async function createSkill({ name, category }) {
+  const result = await executeQuery(
+    `INSERT INTO skills (name, category)
+     VALUES ($1, $2)
+     RETURNING
+       id,
+       name,
+       category,
+       created_at AS "createdAt"`,
+    [name, category],
+  );
+
+  return result?.rows?.[0] ?? null;
+}

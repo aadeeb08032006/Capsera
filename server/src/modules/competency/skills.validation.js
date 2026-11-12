@@ -25,6 +25,19 @@ export const listSkillsQuerySchema = z.object({
     .default(PAGINATION_DEFAULTS.PAGE_SIZE),
 });
 
+export const createSkillBodySchema = z.strictObject({
+  name: z
+    .string({ error: 'name is required' })
+    .trim()
+    .min(1, 'name must not be empty')
+    .max(120, 'name must be 120 characters or fewer'),
+  category: z
+    .string({ error: 'category is required' })
+    .trim()
+    .min(1, 'category must not be empty')
+    .max(120, 'category must be 120 characters or fewer'),
+});
+
 export function parseWithSchema(schema, input) {
   const result = schema.safeParse(input);
   if (!result.success) {
