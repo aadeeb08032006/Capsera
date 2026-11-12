@@ -189,7 +189,7 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/profiles/me` | Authenticated (`ACTIVE`) | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
-| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | **UNRESOLVED (Member 4):** Category filter / pagination details |
+| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
 | `POST /api/v1/skills` | `ADMIN` | **UNRESOLVED (Member 4):** Skill creation payload (`name`, `category`) |
 | `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
@@ -208,6 +208,33 @@ Request: `headline` (max 200), `organization` (max 200), `biography`, `qualifica
 Response `200`: `{ "profile": { ...fields, "updatedAt" } }`.
 
 Both PUT endpoints: unknown fields are rejected with 400; users can edit only their own profile; the wrong role gets 403.
+
+#### GET /api/v1/skills (authenticated, ACTIVE, PROPOSED)
+Query: `category` (optional trimmed string, 1–120 chars; exact case-sensitive match against `skills.category`), `page` (optional integer >= 1, default `1`), `pageSize` (optional integer 1–100, default `20`).
+Ordering: Deterministic alphabetical order (`LOWER(name) ASC, id ASC`).
+Response `200` (paginated via `sendPaginated()`):
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "1",
+        "name": "Node.js",
+        "category": "Backend",
+        "createdAt": "2026-11-03T09:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR` (blank/oversized `category` or invalid `page`/`pageSize`), 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |
