@@ -1,5 +1,6 @@
 export function mapUser(user) {
-  const createdAt = user.created_at ?? user.createdAt;
+  const rawCreatedAt = user.created_at ?? user.createdAt;
+  const createdAt = rawCreatedAt ? new Date(rawCreatedAt).toISOString() : new Date().toISOString();
 
   return {
     id: String(user.id),
@@ -7,6 +8,6 @@ export function mapUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
-    createdAt: new Date(createdAt).toISOString(),
+    createdAt,
   };
 }
