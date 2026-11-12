@@ -81,3 +81,78 @@ export async function createSkill({ name, category }) {
 
   return result?.rows?.[0] ?? null;
 }
+
+/**
+ * Acquires a row-level lock on the user record to serialize concurrent
+ * skill-mapping replacements for the same trainee within a transaction.
+ *
+ * @param {string} userId
+ * @param {import('pg').PoolClient} client
+ */
+export async function lockUserForSkillUpdate(userId, client) {
+  const result = await client.query(
+    'SELECT id FROM users WHERE id = $1 FOR UPDATE',
+    [userId],
+  );
+  return result?.rows?.[0] ?? null;
+}
+
+/**
+ * Returns the subset of skill IDs from `skillIds` that exist in `skills`.
+ *
+ * @param {string[]} skillIds
+ * @param {import('pg').PoolClient} client
+ * @returns {Promise<string[]>}
+ */
+export async function findExistingSkillIds(skillIds, client) {
+  if (!skillIds.length) {
+    return [];
+  }
+  const result = await client.query(
+    'SELECT id FROM skills WHERE id = ANY($1::bigint[])',
+    [skillIds],
+  );
+  return (result?.rows ?? []).map((row) => String(row.id));
+}
+
+/**
+ * Atomically replaces all skill mappings for a trainee within an active transaction.
+ *
+ * @param {string} traineeId
+ * @param {Array<{ skillId: string, proficiency: number }>} skills
+ * @param {import('pg').PoolClient} client
+ */
+export async function replaceTraineeSkillsInTx(traineeId, skills, client) {
+  await client.query(
+    'DELETE FROM trainee_skills WHERE trainee_id = $1',
+    [traineeId],
+  );
+
+  if (skills.length === 0) {
+    return [];
+  }
+
+  const skillIds = skills.map((item) => item.skillId);
+  const proficiencies = skills.map((item) => item.proficiency);
+
+  const result = await client.query(
+    `WITH inserted AS (
+       INSERT INTO trainee_skills (trainee_id, skill_id, proficiency)
+       SELECT $1, skill_id, proficiency
+       FROM UNNEST($2::bigint[], $3::smallint[]) AS t(skill_id, proficiency)
+       RETURNING id, trainee_id, skill_id, proficiency
+     )
+     SELECT
+       i.id,
+       i.skill_id AS "skillId",
+       s.name AS "skillName",
+       s.category,
+       i.proficiency
+     FROM inserted i
+     JOIN skills s ON s.id = i.skill_id
+     ORDER BY LOWER(s.name) ASC, s.id ASC`,
+    [traineeId, skillIds, proficiencies],
+  );
+
+  return result?.rows ?? [];
+}

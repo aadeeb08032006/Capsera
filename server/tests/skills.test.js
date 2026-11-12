@@ -15,7 +15,7 @@ vi.mock('../src/config/db.js', () => ({
 
 import app from '../src/app.js';
 import { env } from '../src/config/env.js';
-import { executeQuery } from '../src/config/db.js';
+import { executeQuery, withTransaction } from '../src/config/db.js';
 import { findAllSkills } from '../src/modules/competency/skills.repository.js';
 
 function makeToken(userId) {
@@ -487,6 +487,354 @@ describe('Skills API (POST /api/v1/skills)', () => {
           message: 'An unexpected server error occurred.',
         },
       });
+    });
+  });
+});
+
+describe('Trainee Skill Mapping API (PUT /api/v1/profiles/me/skills)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function setupMockTransaction(mockClientQuery) {
+    withTransaction.mockImplementation(async (work) => {
+      const client = { query: mockClientQuery };
+      return work(client);
+    });
+  }
+
+  describe('Auth, Active Status & Role Guards', () => {
+    it('rejects missing or invalid JWT (401 UNAUTHENTICATED)', async () => {
+      const missingRes = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .send({ skills: [] });
+
+      expect(missingRes.status).toBe(401);
+      expect(missingRes.body.error.code).toBe('UNAUTHENTICATED');
+
+      const invalidRes = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', 'Bearer bad.token.here')
+        .send({ skills: [] });
+
+      expect(invalidRes.status).toBe(401);
+      expect(invalidRes.body.error.code).toBe('UNAUTHENTICATED');
+    });
+
+    it('rejects non-ACTIVE TRAINEE users (403 ACCOUNT_PENDING / ACCOUNT_SUSPENDED / ACCOUNT_REJECTED)', async () => {
+      const cases = [
+        { status: 'PENDING', expectedCode: 'ACCOUNT_PENDING' },
+        { status: 'SUSPENDED', expectedCode: 'ACCOUNT_SUSPENDED' },
+        { status: 'REJECTED', expectedCode: 'ACCOUNT_REJECTED' },
+      ];
+
+      for (const { status, expectedCode } of cases) {
+        mockAuthUser({ id: '40', role: 'TRAINEE', status });
+
+        const res = await request(app)
+          .put('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('40')}`)
+          .send({ skills: [{ skillId: '1', proficiency: 2 }] });
+
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe(expectedCode);
+      }
+    });
+
+    it('denies access to TRAINER and ADMIN roles (403 FORBIDDEN)', async () => {
+      for (const role of ['TRAINER', 'ADMIN']) {
+        mockAuthUser({ id: '15', role, status: 'ACTIVE' });
+
+        const res = await request(app)
+          .put('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('15')}`)
+          .send({ skills: [{ skillId: '1', proficiency: 2 }] });
+
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('FORBIDDEN');
+      }
+    });
+  });
+
+  describe('Validation & Ownership', () => {
+    it('rejects duplicate skillId values (400 VALIDATION_ERROR)', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({
+          skills: [
+            { skillId: '1', proficiency: 2 },
+            { skillId: '1', proficiency: 3 },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(withTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid proficiency, invalid BIGINT skillId, malformed payloads, and client-supplied traineeId', async () => {
+      const invalidPayloads = [
+        {},
+        { skills: 'not-an-array' },
+        { skills: [], traineeId: '999' },
+        { skills: [{ skillId: '1', proficiency: 0 }] },
+        { skills: [{ skillId: '1', proficiency: 5 }] },
+        { skills: [{ skillId: '1', proficiency: 2.5 }] },
+        { skills: [{ skillId: '1', proficiency: '3' }] },
+        { skills: [{ skillId: '0', proficiency: 2 }] },
+        { skills: [{ skillId: '-1', proficiency: 2 }] },
+        { skills: [{ skillId: 'abc', proficiency: 2 }] },
+        { skills: [{ skillId: '9999999999999999999', proficiency: 2 }] },
+        { skills: [{ skillId: '1', proficiency: 2, extra: true }] },
+      ];
+
+      for (const payload of invalidPayloads) {
+        mockAuthUser({ id: '40', role: 'TRAINEE' });
+
+        const res = await request(app)
+          .put('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('40')}`)
+          .send(payload);
+
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+      expect(withTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Transactional Replace-All, Rollback & Concurrency', () => {
+    it('replaces trainee skill mappings atomically using req.user.id and FOR UPDATE row lock', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      const clientQuery = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: 40 }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 101, skillId: 1, skillName: 'Node.js', category: 'Backend', proficiency: 3 },
+            { id: 102, skillId: 2, skillName: 'PostgreSQL', category: 'Database', proficiency: 4 },
+          ],
+        });
+      setupMockTransaction(clientQuery);
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({
+          skills: [
+            { skillId: '1', proficiency: 3 },
+            { skillId: '2', proficiency: 4 },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: {
+          skills: [
+            { id: '101', skillId: '1', skillName: 'Node.js', category: 'Backend', proficiency: 3 },
+            { id: '102', skillId: '2', skillName: 'PostgreSQL', category: 'Database', proficiency: 4 },
+          ],
+        },
+      });
+
+      expect(clientQuery).toHaveBeenNthCalledWith(
+        1,
+        'SELECT id FROM users WHERE id = $1 FOR UPDATE',
+        ['40'],
+      );
+      expect(clientQuery).toHaveBeenNthCalledWith(
+        2,
+        'SELECT id FROM skills WHERE id = ANY($1::bigint[])',
+        [['1', '2']],
+      );
+      expect(clientQuery).toHaveBeenNthCalledWith(
+        3,
+        'DELETE FROM trainee_skills WHERE trainee_id = $1',
+        ['40'],
+      );
+      expect(clientQuery).toHaveBeenNthCalledWith(
+        4,
+        expect.stringContaining('INSERT INTO trainee_skills (trainee_id, skill_id, proficiency)'),
+        ['40', ['1', '2'], [3, 4]],
+      );
+    });
+
+    it('updates proficiency via replace-all semantics', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      const clientQuery = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: '40' }] })
+        .mockResolvedValueOnce({ rows: [{ id: '1' }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockResolvedValueOnce({
+          rows: [{ id: '105', skillId: '1', skillName: 'Node.js', category: 'Backend', proficiency: 4 }],
+        });
+      setupMockTransaction(clientQuery);
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({ skills: [{ skillId: '1', proficiency: 4 }] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.skills).toEqual([
+        { id: '105', skillId: '1', skillName: 'Node.js', category: 'Backend', proficiency: 4 },
+      ]);
+    });
+
+    it('clears all mappings when skills is an empty array []', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      const clientQuery = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: '40' }] })
+        .mockResolvedValueOnce({ rowCount: 2 });
+      setupMockTransaction(clientQuery);
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({ skills: [] });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: { skills: [] },
+      });
+      expect(clientQuery).toHaveBeenCalledTimes(2);
+      expect(clientQuery).toHaveBeenNthCalledWith(
+        2,
+        'DELETE FROM trainee_skills WHERE trainee_id = $1',
+        ['40'],
+      );
+    });
+
+    it('returns 404 SKILL_NOT_FOUND and aborts before DELETE when any skillId does not exist', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      const clientQuery = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: '40' }] })
+        .mockResolvedValueOnce({ rows: [{ id: '1' }] });
+      setupMockTransaction(clientQuery);
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({
+          skills: [
+            { skillId: '1', proficiency: 2 },
+            { skillId: '999', proficiency: 3 },
+          ],
+        });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('SKILL_NOT_FOUND');
+      expect(clientQuery).toHaveBeenCalledTimes(2);
+    });
+
+    it('rolls back cleanly and masks unexpected transaction errors behind 500', async () => {
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      const clientQuery = vi
+        .fn()
+        .mockResolvedValueOnce({ rows: [{ id: '40' }] })
+        .mockResolvedValueOnce({ rows: [{ id: '1' }] })
+        .mockResolvedValueOnce({ rowCount: 1 })
+        .mockRejectedValueOnce(new Error('deadlock detected'));
+      setupMockTransaction(clientQuery);
+
+      const res = await request(app)
+        .put('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('40')}`)
+        .send({ skills: [{ skillId: '1', proficiency: 3 }] });
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected server error occurred.',
+        },
+      });
+    });
+
+    it('serializes concurrent replacements for the same trainee without mixed results', async () => {
+      // Simulate PostgreSQL FOR UPDATE row lock serializing two concurrent transactions
+      let storedMappings = [];
+      let lockQueue = Promise.resolve();
+
+      withTransaction.mockImplementation(async (work) => {
+        const release = lockQueue;
+        let resolveNext;
+        lockQueue = new Promise((r) => {
+          resolveNext = r;
+        });
+        await release;
+
+        try {
+          const client = {
+            query: vi.fn(async (sql, params) => {
+              if (sql.includes('FOR UPDATE')) {
+                return { rows: [{ id: params[0] }] };
+              }
+              if (sql.includes('FROM skills WHERE id = ANY')) {
+                return { rows: params[0].map((id) => ({ id })) };
+              }
+              if (sql.startsWith('DELETE FROM trainee_skills')) {
+                storedMappings = [];
+                return { rowCount: 0 };
+              }
+              if (sql.includes('INSERT INTO trainee_skills')) {
+                const [, skillIds, proficiencies] = params;
+                storedMappings = skillIds.map((skillId, idx) => ({
+                  id: String(idx + 1),
+                  skillId,
+                  skillName: `Skill ${skillId}`,
+                  category: 'General',
+                  proficiency: proficiencies[idx],
+                }));
+                return { rows: storedMappings };
+              }
+              return { rows: [] };
+            }),
+          };
+          return await work(client);
+        } finally {
+          resolveNext();
+        }
+      });
+
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+      mockAuthUser({ id: '40', role: 'TRAINEE' });
+
+      const [resA, resB] = await Promise.all([
+        request(app)
+          .put('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('40')}`)
+          .send({ skills: [{ skillId: '1', proficiency: 2 }] }),
+        request(app)
+          .put('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('40')}`)
+          .send({
+            skills: [
+              { skillId: '2', proficiency: 4 },
+              { skillId: '3', proficiency: 1 },
+            ],
+          }),
+      ]);
+
+      expect(resA.status).toBe(200);
+      expect(resB.status).toBe(200);
+      // Final stored state matches the second serialized transaction cleanly, with no mixed rows
+      expect(storedMappings).toEqual([
+        { id: '1', skillId: '2', skillName: 'Skill 2', category: 'General', proficiency: 4 },
+        { id: '2', skillId: '3', skillName: 'Skill 3', category: 'General', proficiency: 1 },
+      ]);
     });
   });
 });

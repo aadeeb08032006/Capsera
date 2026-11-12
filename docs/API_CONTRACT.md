@@ -191,7 +191,7 @@ Request: `{ "role": "TRAINER" }`
 | `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
 | `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
 | `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
-| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
+| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
 
@@ -256,6 +256,40 @@ Response `201`:
 }
 ```
 Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 409 `CONFLICT` (case-insensitive duplicate skill name).
+
+#### PUT /api/v1/profiles/me/skills (TRAINEE, PROPOSED)
+Replaces the authenticated trainee's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing skill mappings for the trainee. Concurrent requests for the same trainee are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 3 },
+    { "skillId": "2", "proficiency": 4 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- Unknown fields (such as `traineeId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |

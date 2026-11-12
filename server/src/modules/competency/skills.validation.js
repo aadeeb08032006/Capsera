@@ -38,6 +38,45 @@ export const createSkillBodySchema = z.strictObject({
     .max(120, 'category must be 120 characters or fewer'),
 });
 
+const POSITIVE_BIGINT_STRING_REGEX = /^[1-9]\d{0,18}$/;
+const MAX_POSTGRES_BIGINT = 9223372036854775807n;
+
+export const positiveBigIntIdSchema = z
+  .string({ error: 'skillId is required' })
+  .trim()
+  .regex(POSITIVE_BIGINT_STRING_REGEX, 'skillId must be a positive integer')
+  .refine(
+    (val) => POSITIVE_BIGINT_STRING_REGEX.test(val) && BigInt(val) <= MAX_POSTGRES_BIGINT,
+    'skillId exceeds PostgreSQL BIGINT range',
+  );
+
+export const traineeSkillItemSchema = z.strictObject({
+  skillId: positiveBigIntIdSchema,
+  proficiency: z
+    .number({ error: 'proficiency must be an integer between 1 and 4' })
+    .int('proficiency must be an integer')
+    .min(1, 'proficiency must be between 1 and 4')
+    .max(4, 'proficiency must be between 1 and 4'),
+});
+
+export const replaceTraineeSkillsBodySchema = z.strictObject({
+  skills: z
+    .array(traineeSkillItemSchema, { error: 'skills must be an array' })
+    .superRefine((items, ctx) => {
+      const seen = new Set();
+      items.forEach((item, index) => {
+        if (seen.has(item.skillId)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [index, 'skillId'],
+            message: `Duplicate skillId: ${item.skillId}`,
+          });
+        }
+        seen.add(item.skillId);
+      });
+    }),
+});
+
 export function parseWithSchema(schema, input) {
   const result = schema.safeParse(input);
   if (!result.success) {
