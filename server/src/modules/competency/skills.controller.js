@@ -9,6 +9,8 @@ import {
 } from './skills.validation.js';
 import {
   createSkill,
+  getMyTraineeSkills,
+  getMyTrainerSkills,
   listSkills,
   replaceMyTraineeSkills,
   replaceMyTrainerSkills,
@@ -36,5 +38,15 @@ export const replaceMyTrainerSkillsHandler = asyncHandler(async (req, res) => {
   const { skills } = parseWithSchema(replaceTrainerSkillsBodySchema, req.body ?? {});
   const savedSkills = await replaceMyTrainerSkills(req.user.id, skills);
   return sendSuccess(res, { skills: savedSkills });
+});
+
+export const getMyTraineeSkillsHandler = asyncHandler(async (req, res) => {
+  const skills = await getMyTraineeSkills(req.user.id);
+  return sendSuccess(res, { skills });
+});
+
+export const getMyTrainerSkillsHandler = asyncHandler(async (req, res) => {
+  const skills = await getMyTrainerSkills(req.user.id);
+  return sendSuccess(res, { skills });
 });
 

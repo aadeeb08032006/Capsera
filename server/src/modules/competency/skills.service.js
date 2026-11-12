@@ -4,6 +4,8 @@ import {
   createSkill as insertSkill,
   findAllSkills,
   findExistingSkillIds,
+  findTraineeSkillsByUserId,
+  findTrainerSkillsByUserId,
   lockUserForSkillUpdate,
   replaceTraineeSkillsInTx,
   replaceTrainerSkillsInTx,
@@ -150,5 +152,35 @@ export async function replaceMyTraineeSkills(traineeId, skills) {
  */
 export async function replaceMyTrainerSkills(trainerId, skills) {
   return executeReplaceUserSkills(trainerId, skills, replaceTrainerSkillsInTx, mapTrainerSkillRow);
+}
+
+async function executeGetUserSkills(userId, findByUserId, mapRow) {
+  try {
+    const rows = await findByUserId(userId);
+    return rows.map(mapRow);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    throw new AppError(500, 'INTERNAL_SERVER_ERROR', 'Database operation failed');
+  }
+}
+
+/**
+ * Fetch all saved skill mappings for the authenticated trainee.
+ *
+ * @param {string} traineeId
+ */
+export async function getMyTraineeSkills(traineeId) {
+  return executeGetUserSkills(traineeId, findTraineeSkillsByUserId, mapTraineeSkillRow);
+}
+
+/**
+ * Fetch all saved skill mappings for the authenticated trainer.
+ *
+ * @param {string} trainerId
+ */
+export async function getMyTrainerSkills(trainerId) {
+  return executeGetUserSkills(trainerId, findTrainerSkillsByUserId, mapTrainerSkillRow);
 }
 

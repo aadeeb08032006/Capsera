@@ -192,7 +192,9 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
 | `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
 | `PUT /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
 
 #### GET /api/v1/profiles/me (authenticated, ACTIVE)
@@ -257,6 +259,29 @@ Response `201`:
 ```
 Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 409 `CONFLICT` (case-insensitive duplicate skill name).
 
+#### GET /api/v1/profiles/me/skills (TRAINEE, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainee skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainee (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
 #### PUT /api/v1/profiles/me/skills (TRAINEE, PROPOSED)
 Replaces the authenticated trainee's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing skill mappings for the trainee. Concurrent requests for the same trainee are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
 Request:
@@ -290,6 +315,30 @@ Response `200`:
 }
 ```
 Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### GET /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainer skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainer (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
 
 #### PUT /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED)
 Replaces the authenticated trainer's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing trainer skill mappings. Concurrent requests for the same trainer are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.

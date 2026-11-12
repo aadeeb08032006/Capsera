@@ -1278,3 +1278,206 @@ describe('Trainer Skill Mapping API (PUT /api/v1/profiles/me/trainer-skills)', (
     });
   });
 
+describe('Profile Skill Read APIs (GET /api/v1/profiles/me/skills & /me/trainer-skills)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    withTransaction.mockReset();
+  });
+
+  describe('GET /api/v1/profiles/me/skills (TRAINEE)', () => {
+    it('rejects missing/invalid JWT (401) and non-ACTIVE or non-TRAINEE users (403)', async () => {
+      const noAuth = await request(app).get('/api/v1/profiles/me/skills');
+      expect(noAuth.status).toBe(401);
+      expect(noAuth.body.error.code).toBe('UNAUTHENTICATED');
+
+      mockAuthUser({ id: '50', role: 'TRAINEE', status: 'PENDING' });
+      const pendingRes = await request(app)
+        .get('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('50')}`);
+      expect(pendingRes.status).toBe(403);
+      expect(pendingRes.body.error.code).toBe('ACCOUNT_PENDING');
+
+      for (const role of ['TRAINER', 'ADMIN']) {
+        mockAuthUser({ id: '51', role, status: 'ACTIVE' });
+        const roleRes = await request(app)
+          .get('/api/v1/profiles/me/skills')
+          .set('Authorization', `Bearer ${makeToken('51')}`);
+        expect(roleRes.status).toBe(403);
+        expect(roleRes.body.error.code).toBe('FORBIDDEN');
+      }
+    });
+
+    it('fetches trainee mappings for req.user.id with deterministic ordering and normalized DTOs', async () => {
+      mockAuthUser({ id: '52', role: 'TRAINEE', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          { id: 10n, skillId: 1n, skillName: 'Docker', category: 'DevOps', proficiency: 2 },
+          { id: '11', skillId: '2', skillName: 'Node.js', category: 'Backend', proficiency: 4 },
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('52')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: {
+          skills: [
+            { id: '10', skillId: '1', skillName: 'Docker', category: 'DevOps', proficiency: 2 },
+            { id: '11', skillId: '2', skillName: 'Node.js', category: 'Backend', proficiency: 4 },
+          ],
+        },
+      });
+      expect(executeQuery).toHaveBeenCalledTimes(2);
+      expect(executeQuery.mock.calls[1][0]).toContain('FROM trainee_skills ts');
+      expect(executeQuery.mock.calls[1][0]).toContain('JOIN skills s ON s.id = ts.skill_id');
+      expect(executeQuery.mock.calls[1][0]).toContain('ORDER BY LOWER(s.name) ASC, s.id ASC');
+      expect(executeQuery.mock.calls[1][1]).toEqual(['52']);
+    });
+
+    it('returns an empty array when trainee has no saved mappings', async () => {
+      mockAuthUser({ id: '53', role: 'TRAINEE', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('53')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { skills: [] } });
+    });
+
+    it('masks database errors behind 500 INTERNAL_SERVER_ERROR', async () => {
+      mockAuthUser({ id: '54', role: 'TRAINEE', status: 'ACTIVE' });
+      executeQuery.mockRejectedValueOnce(new Error('relation "trainee_skills" does not exist'));
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/skills')
+        .set('Authorization', `Bearer ${makeToken('54')}`);
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected server error occurred.',
+        },
+      });
+    });
+  });
+
+  describe('GET /api/v1/profiles/me/trainer-skills (TRAINER)', () => {
+    it('rejects missing/invalid JWT (401) and non-ACTIVE or non-TRAINER users (403)', async () => {
+      const noAuth = await request(app).get('/api/v1/profiles/me/trainer-skills');
+      expect(noAuth.status).toBe(401);
+      expect(noAuth.body.error.code).toBe('UNAUTHENTICATED');
+
+      mockAuthUser({ id: '60', role: 'TRAINER', status: 'SUSPENDED' });
+      const suspendedRes = await request(app)
+        .get('/api/v1/profiles/me/trainer-skills')
+        .set('Authorization', `Bearer ${makeToken('60')}`);
+      expect(suspendedRes.status).toBe(403);
+      expect(suspendedRes.body.error.code).toBe('ACCOUNT_SUSPENDED');
+
+      for (const role of ['TRAINEE', 'ADMIN']) {
+        mockAuthUser({ id: '61', role, status: 'ACTIVE' });
+        const roleRes = await request(app)
+          .get('/api/v1/profiles/me/trainer-skills')
+          .set('Authorization', `Bearer ${makeToken('61')}`);
+        expect(roleRes.status).toBe(403);
+        expect(roleRes.body.error.code).toBe('FORBIDDEN');
+      }
+    });
+
+    it('fetches trainer mappings for req.user.id with deterministic ordering and numeric yearsOfExperience', async () => {
+      mockAuthUser({ id: '62', role: 'TRAINER', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 20n,
+            skillId: 3n,
+            skillName: 'Kubernetes',
+            category: 'DevOps',
+            proficiency: 4,
+            yearsOfExperience: '5.5',
+          },
+          {
+            id: '21',
+            skillId: '4',
+            skillName: 'PostgreSQL',
+            category: 'Databases',
+            proficiency: 3,
+            yearsOfExperience: '0.0',
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/trainer-skills')
+        .set('Authorization', `Bearer ${makeToken('62')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: {
+          skills: [
+            {
+              id: '20',
+              skillId: '3',
+              skillName: 'Kubernetes',
+              category: 'DevOps',
+              proficiency: 4,
+              yearsOfExperience: 5.5,
+            },
+            {
+              id: '21',
+              skillId: '4',
+              skillName: 'PostgreSQL',
+              category: 'Databases',
+              proficiency: 3,
+              yearsOfExperience: 0,
+            },
+          ],
+        },
+      });
+      expect(executeQuery).toHaveBeenCalledTimes(2);
+      expect(executeQuery.mock.calls[1][0]).toContain('FROM trainer_skills ts');
+      expect(executeQuery.mock.calls[1][0]).toContain('JOIN skills s ON s.id = ts.skill_id');
+      expect(executeQuery.mock.calls[1][0]).toContain('ORDER BY LOWER(s.name) ASC, s.id ASC');
+      expect(executeQuery.mock.calls[1][1]).toEqual(['62']);
+    });
+
+    it('returns an empty array when trainer has no saved mappings', async () => {
+      mockAuthUser({ id: '63', role: 'TRAINER', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/trainer-skills')
+        .set('Authorization', `Bearer ${makeToken('63')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { skills: [] } });
+    });
+
+    it('masks database errors behind 500 INTERNAL_SERVER_ERROR', async () => {
+      mockAuthUser({ id: '64', role: 'TRAINER', status: 'ACTIVE' });
+      executeQuery.mockRejectedValueOnce(new Error('relation "trainer_skills" does not exist'));
+
+      const res = await request(app)
+        .get('/api/v1/profiles/me/trainer-skills')
+        .set('Authorization', `Bearer ${makeToken('64')}`);
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        success: false,
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected server error occurred.',
+        },
+      });
+    });
+  });
+});
+

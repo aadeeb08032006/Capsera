@@ -201,3 +201,52 @@ export async function replaceTrainerSkillsInTx(trainerId, skills, client) {
 
   return result?.rows ?? [];
 }
+
+/**
+ * Fetches all skill mappings for a trainee joined with canonical skill metadata
+ * in deterministic alphabetical order.
+ *
+ * @param {string} traineeId
+ */
+export async function findTraineeSkillsByUserId(traineeId) {
+  const result = await executeQuery(
+    `SELECT
+       ts.id,
+       ts.skill_id AS "skillId",
+       s.name AS "skillName",
+       s.category,
+       ts.proficiency
+     FROM trainee_skills ts
+     JOIN skills s ON s.id = ts.skill_id
+     WHERE ts.trainee_id = $1
+     ORDER BY LOWER(s.name) ASC, s.id ASC`,
+    [traineeId],
+  );
+
+  return result?.rows ?? [];
+}
+
+/**
+ * Fetches all skill mappings for a trainer joined with canonical skill metadata
+ * in deterministic alphabetical order.
+ *
+ * @param {string} trainerId
+ */
+export async function findTrainerSkillsByUserId(trainerId) {
+  const result = await executeQuery(
+    `SELECT
+       ts.id,
+       ts.skill_id AS "skillId",
+       s.name AS "skillName",
+       s.category,
+       ts.proficiency,
+       ts.years_of_experience AS "yearsOfExperience"
+     FROM trainer_skills ts
+     JOIN skills s ON s.id = ts.skill_id
+     WHERE ts.trainer_id = $1
+     ORDER BY LOWER(s.name) ASC, s.id ASC`,
+    [trainerId],
+  );
+
+  return result?.rows ?? [];
+}
