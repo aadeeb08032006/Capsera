@@ -5,9 +5,13 @@ import { env } from '../../config/env.js';
 import { AppError } from '../../shared/AppError.js';
 import { mapUser } from './mapUser.js';
 
+export { mapUser };
+
 const dummyPasswordHash = await bcrypt.hash('capsera-auth-dummy-password', env.bcryptCost);
 
 export async function signupUser({ fullName, email, password, role }) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedFullName = fullName.trim();
   const passwordHash = await bcrypt.hash(password, env.bcryptCost);
 
   try {
@@ -15,7 +19,7 @@ export async function signupUser({ fullName, email, password, role }) {
       `INSERT INTO users (full_name, email, password_hash, role)
        VALUES ($1, $2, $3, $4)
        RETURNING id, full_name, email, role, status, created_at`,
-      [fullName, email, passwordHash, role],
+      [normalizedFullName, normalizedEmail, passwordHash, role],
     );
 
     return mapUser(result.rows[0]);
@@ -28,12 +32,13 @@ export async function signupUser({ fullName, email, password, role }) {
 }
 
 export async function loginUser({ email, password }) {
+  const normalizedEmail = email.trim().toLowerCase();
   const result = await executeQuery(
     `SELECT id, full_name, email, password_hash, role, status, created_at
      FROM users
      WHERE LOWER(email) = LOWER($1)
      LIMIT 1`,
-    [email],
+    [normalizedEmail],
   );
   const user = result.rows[0];
   const passwordMatches = await bcrypt.compare(password, user?.password_hash ?? dummyPasswordHash);

@@ -65,16 +65,49 @@ describe('Auth endpoints', () => {
   });
 
   it('rejects weak passwords', async () => {
-    const response = await request(server).post(`${basePath}/signup`).send({
+    const noNumber = await request(server).post(`${basePath}/signup`).send({
       fullName: 'Asha Rao',
       email: 'asha@example.com',
       password: 'weakpass',
       role: 'TRAINEE',
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe('VALIDATION_ERROR');
-    expect(response.body.error.message).toMatch(/number/i);
+    expect(noNumber.status).toBe(400);
+    expect(noNumber.body.error.code).toBe('VALIDATION_ERROR');
+    expect(noNumber.body.error.message).toMatch(/number/i);
+
+    const noLetter = await request(server).post(`${basePath}/signup`).send({
+      fullName: 'Asha Rao',
+      email: 'asha@example.com',
+      password: '12345678',
+      role: 'TRAINEE',
+    });
+
+    expect(noLetter.status).toBe(400);
+    expect(noLetter.body.error.code).toBe('VALIDATION_ERROR');
+    expect(noLetter.body.error.message).toMatch(/letter/i);
+
+    const tooShort = await request(server).post(`${basePath}/signup`).send({
+      fullName: 'Asha Rao',
+      email: 'asha@example.com',
+      password: 'Pass1',
+      role: 'TRAINEE',
+    });
+
+    expect(tooShort.status).toBe(400);
+    expect(tooShort.body.error.code).toBe('VALIDATION_ERROR');
+    expect(tooShort.body.error.message).toMatch(/8 bytes/i);
+
+    const tooLong = await request(server).post(`${basePath}/signup`).send({
+      fullName: 'Asha Rao',
+      email: 'asha@example.com',
+      password: `P1${'a'.repeat(71)}`,
+      role: 'TRAINEE',
+    });
+
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.error.code).toBe('VALIDATION_ERROR');
+    expect(tooLong.body.error.message).toMatch(/72 bytes/i);
   });
 
   it('rejects unknown signup fields', async () => {
@@ -132,6 +165,22 @@ describe('Auth endpoints', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('ACCOUNT_PENDING');
+
+    executeQuery.mockResolvedValueOnce({ rows: [userRow({ status: 'REJECTED' })] });
+    const rejected = await request(server).post(`${basePath}/login`).send({
+      email: 'asha@example.com',
+      password: validPassword,
+    });
+    expect(rejected.status).toBe(403);
+    expect(rejected.body.error.code).toBe('ACCOUNT_REJECTED');
+
+    executeQuery.mockResolvedValueOnce({ rows: [userRow({ status: 'SUSPENDED' })] });
+    const suspended = await request(server).post(`${basePath}/login`).send({
+      email: 'asha@example.com',
+      password: validPassword,
+    });
+    expect(suspended.status).toBe(403);
+    expect(suspended.body.error.code).toBe('ACCOUNT_SUSPENDED');
   });
 
   it('rejects a PENDING user token on /auth/me', async () => {
@@ -143,6 +192,20 @@ describe('Auth endpoints', () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('ACCOUNT_PENDING');
+
+    executeQuery.mockResolvedValueOnce({ rows: [userRow({ status: 'REJECTED' })] });
+    const rejected = await request(server)
+      .get(`${basePath}/me`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(rejected.status).toBe(403);
+    expect(rejected.body.error.code).toBe('ACCOUNT_REJECTED');
+
+    executeQuery.mockResolvedValueOnce({ rows: [userRow({ status: 'SUSPENDED' })] });
+    const suspended = await request(server)
+      .get(`${basePath}/me`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(suspended.status).toBe(403);
+    expect(suspended.body.error.code).toBe('ACCOUNT_SUSPENDED');
   });
 
   it('logs in an ACTIVE user and returns the authenticated user from /auth/me', async () => {

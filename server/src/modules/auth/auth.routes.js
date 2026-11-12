@@ -1,10 +1,12 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate } from '../../middleware/authenticate.js';
 import { sendError } from '../../shared/response.js';
 import { getCurrentUser, login, logout, signup } from './auth.controller.js';
 
 const router = Router();
+
+router.use(express.json({ limit: '10kb' }));
 
 function createAuthRateLimiter() {
   return rateLimit({
