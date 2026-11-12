@@ -6,6 +6,7 @@ import { checkDatabaseConnection } from './config/db.js';
 import { sendSuccess } from './shared/response.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import authRouter from './modules/auth/auth.routes.js';
 
 const app = express();
 
@@ -17,10 +18,19 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: '1mb' }));
+const defaultJsonParser = express.json({ limit: '1mb' });
+const authJsonParser = express.json({ limit: '10kb' });
+const authPath = `${env.apiPrefix.replace(/\/$/, '')}/auth`.toLowerCase();
+
+app.use((req, res, next) => {
+  const path = req.path.toLowerCase();
+  const isAuthPath = path === authPath || path.startsWith(`${authPath}/`);
+  return (isAuthPath ? authJsonParser : defaultJsonParser)(req, res, next);
+});
 
 // Canonical /api/v1 router
 const apiRouter = express.Router();
+apiRouter.use('/auth', authRouter);
 
 /**
  * GET /api/v1/health
