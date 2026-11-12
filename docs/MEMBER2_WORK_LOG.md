@@ -58,6 +58,23 @@
 - Needs from teammates:
   - All members: Review Member 2 `ADR-004` items (`SCHEMA-M2-01`..`04`, `OPEN-005`, `OPEN-007`) and confirm `zod` (`OPEN-003`) before Lessons/Resources/Enrollments implementation.
 
+### Task 3: Add lessons and resources to the courses module (2026-11-11)
+- Status: Done
+- What was built:
+  - Implemented Lessons API (`GET/POST /api/v1/courses/:courseId/lessons`, `PUT /api/v1/courses/:courseId/lessons/reorder`, `GET/PATCH/DELETE /api/v1/lessons/:lessonId`) with server-side course lookup + ownership enforcement, auto-assigned `lesson_order` mapped to JSON `position`, and transaction-safe reordering.
+  - Added Multer (`^2.5.0`) upload middleware (`resource.upload.js`) storing files in gitignored local `server/uploads/` (not served statically) while persisting only metadata in PostgreSQL `learning_resources`, enforcing size limits (`413`), strict MIME/extension allowlist + executable/active-content blocking (`415`), filename sanitization, and cleanup on failed validation.
+  - Implemented Learning Resources API (`POST/GET /api/v1/courses/:courseId/resources`, `GET /api/v1/courses/:courseId/resources/:resourceId/download`, `DELETE /api/v1/courses/:courseId/resources/:resourceId`), restricting read/download access to course owner, `ADMIN`, or `ACTIVE`/`COMPLETED` enrolled trainees (`403` otherwise) and omitting `storage_ref` from all JSON responses.
+  - Extracted shared course DB/permission helpers into `course.helpers.js` and added 15 Vitest + Supertest tests in `server/tests/lessonsAndResources.test.js`.
+- Files created or changed: `server/package.json`, `server/package-lock.json`, `server/src/app.js`, `server/src/modules/courses/course.helpers.js`, `server/src/modules/courses/course.validation.js`, `server/src/modules/courses/course.service.js`, `server/src/modules/courses/course.routes.js`, `server/src/modules/courses/lesson.validation.js`, `server/src/modules/courses/lesson.service.js`, `server/src/modules/courses/lesson.controller.js`, `server/src/modules/courses/lesson.routes.js`, `server/src/modules/courses/resource.upload.js`, `server/src/modules/courses/resource.validation.js`, `server/src/modules/courses/resource.service.js`, `server/src/modules/courses/resource.controller.js`, `server/src/modules/courses/resource.routes.js`, `server/tests/lessonsAndResources.test.js`, `docs/MEMBER2_WORK_LOG.md`
+- How to test it: `npm run check:server` and `npm test --prefix server`
+- Tests added: `server/tests/lessonsAndResources.test.js` (15 tests, covering auto-assigned positions, non-owner/unenrolled `403`, `413` oversized upload, `415` disallowed/executable upload, filename sanitization, cleanup on validation failure, link URLs, protected download streaming, and no `/uploads` static exposure) — 15/15 pass alongside existing suites (47/47 total passed with mocked `db.js`).
+- Issues, assumptions, or decisions:
+  - Installed `multer` (`^2.5.0`) in `server/` for `multipart/form-data` parsing; default limit is 25 MiB (`MAX_RESOURCE_FILE_SIZE_BYTES` env override) and default local storage folder is `server/uploads/` (`UPLOAD_DIR` env override), both covered by `.gitignore`.
+  - Uses PostgreSQL tables `lessons` (`lesson_order` mapped to JSON `position`) and `learning_resources` (`storage_ref` kept internal; DTO exposes `downloadUrl` instead) per `003_create_courses_lessons_and_enrollments.sql` (`ADR-002`/`ADR-004`).
+  - Live PostgreSQL execution was not run in this environment (verified via mocked `server/src/config/db.js` and real Multer/disk temp-dir file streaming in Supertest).
+- Needs from teammates:
+  - All members: Note added `multer` dependency in `server/package.json` and approve resource upload limits/types + DTO shape in `docs/API_CONTRACT.md` §6.3 when reviewing PR.
+
 ## Issues and decisions
 
 1. **Database Engine — PostgreSQL (`pg`) instead of MySQL (`mysql2`):**
