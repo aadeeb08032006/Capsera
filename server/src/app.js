@@ -8,6 +8,7 @@ import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import courseRoutes from './modules/courses/course.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
+import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
 
 const app = express();
 
@@ -64,6 +65,7 @@ apiRouter.get('/health', async (req, res, next) => {
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/skills', skillsRoutes);
 apiRouter.use('/profiles', profileSkillsRoutes);
+apiRouter.use('/trainers', trainerRecommendationRoutes);
 app.use(env.apiPrefix, apiRouter);
 
 // Fallback & error handlers

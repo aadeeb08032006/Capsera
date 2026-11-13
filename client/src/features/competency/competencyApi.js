@@ -134,3 +134,63 @@ export async function replaceMyTrainerSkills(skills = [], options = {}) {
   });
   return payload.data.skills ?? [];
 }
+
+/**
+ * Fetch deterministic, explainable trainer recommendations for a canonical skill
+ * (ACTIVE TRAINEE or ADMIN only).
+ *
+ * Uses the PROPOSED CP-04 recommendation response contract (`{ skill, items, pagination }`).
+ *
+ * @param {{ skillId: string | number, page?: number, pageSize?: number }} params
+ * @param {RequestInit} [options] - Optional fetch options (e.g. AbortSignal)
+ * @returns {Promise<{
+ *   skill: { id: string, name: string, category: string },
+ *   items: Array<{
+ *     trainerId: string,
+ *     fullName: string,
+ *     headline: string | null,
+ *     organization: string | null,
+ *     subjectExpertise: string | null,
+ *     proficiency: number,
+ *     proficiencyLabel: string,
+ *     yearsOfExperience: number,
+ *     explanation: {
+ *       matchedSkill: string,
+ *       proficiency: number,
+ *       proficiencyLabel: string,
+ *       yearsOfExperience: number,
+ *       summary: string
+ *     }
+ *   }>,
+ *   pagination: { page: number, pageSize: number, totalItems: number, totalPages: number }
+ * }>}
+ */
+export async function getTrainerRecommendations(
+  { skillId, page, pageSize } = {},
+  options = {},
+) {
+  const normalizedSkillId =
+    skillId !== undefined && skillId !== null ? String(skillId).trim() : '';
+  if (!normalizedSkillId) {
+    const error = new Error('skillId is required to fetch trainer recommendations.');
+    error.code = 'VALIDATION_ERROR';
+    error.status = 400;
+    throw error;
+  }
+
+  const searchParams = new URLSearchParams();
+  searchParams.set('skillId', normalizedSkillId);
+
+  if (page !== undefined && page !== null) {
+    searchParams.set('page', String(page));
+  }
+  if (pageSize !== undefined && pageSize !== null) {
+    searchParams.set('pageSize', String(pageSize));
+  }
+
+  const payload = await apiRequest(`/trainers/recommendations?${searchParams.toString()}`, {
+    ...options,
+    method: 'GET',
+  });
+  return payload.data;
+}

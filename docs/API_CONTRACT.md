@@ -195,7 +195,7 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
 | `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED) |
 | `GET /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
-| `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
+| `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **PROPOSED (Member 4):** Pending team approval on explanation object structure and pagination fields |
 
 #### GET /api/v1/profiles/me (authenticated, ACTIVE)
 Response `200`: `{ "user": { "id", "fullName", "email", "role" }, "profile": { ... } | null }`.
@@ -375,6 +375,62 @@ Response `200`:
 }
 ```
 Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### GET /api/v1/trainers/recommendations (`TRAINEE`, `ADMIN`, PROPOSED)
+Returns deterministic, explainable trainer recommendations for a canonical skill.
+
+> **PROPOSED (Member 4):** The `explanation` object shape and `pagination` fields below are proposed pending team approval.
+
+Query parameters:
+- `skillId` (required, positive PostgreSQL `BIGINT` string)
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Matching & ranking rules (`PRD` Section 6.8 & `FR-13`):
+- Exact match on `trainer_skills.skill_id = skillId`
+- Eligible trainers only (`users.role = 'TRAINER'` and `users.status = 'ACTIVE'`)
+- Ordered deterministically by `trainer_skills.proficiency DESC`, then skill-specific `trainer_skills.years_of_experience DESC`, then `LOWER(users.full_name) ASC`, then `users.id ASC`
+- Profile metadata is `LEFT JOIN`ed from `trainer_profiles` (`null` when no profile row exists)
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skill": {
+      "id": "1",
+      "name": "Node.js",
+      "category": "Backend"
+    },
+    "items": [
+      {
+        "trainerId": "12",
+        "fullName": "Jane Doe",
+        "headline": "Principal Node.js Architect",
+        "organization": "Capsera Labs",
+        "subjectExpertise": "Distributed Systems",
+        "proficiency": 4,
+        "proficiencyLabel": "EXPERT",
+        "yearsOfExperience": 5.5,
+        "explanation": {
+          "matchedSkill": "Node.js",
+          "proficiency": 4,
+          "proficiencyLabel": "EXPERT",
+          "yearsOfExperience": 5.5,
+          "summary": "Matches Node.js; expert proficiency; 5.5 years' experience."
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND`.
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |

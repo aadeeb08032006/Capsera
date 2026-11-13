@@ -2,13 +2,7 @@ import { z } from 'zod';
 import { AppError } from '../../shared/AppError.js';
 import { PAGINATION_DEFAULTS } from '../../shared/constants.js';
 
-export const listSkillsQuerySchema = z.object({
-  category: z
-    .string()
-    .trim()
-    .min(1, 'category must not be empty')
-    .max(120, 'category must be 120 characters or fewer')
-    .optional(),
+export const paginationQueryFields = {
   page: z.coerce
     .number()
     .int('page must be an integer')
@@ -23,6 +17,16 @@ export const listSkillsQuerySchema = z.object({
       `pageSize must be ${PAGINATION_DEFAULTS.MAX_PAGE_SIZE} or fewer`,
     )
     .default(PAGINATION_DEFAULTS.PAGE_SIZE),
+};
+
+export const listSkillsQuerySchema = z.object({
+  category: z
+    .string()
+    .trim()
+    .min(1, 'category must not be empty')
+    .max(120, 'category must be 120 characters or fewer')
+    .optional(),
+  ...paginationQueryFields,
 });
 
 export const createSkillBodySchema = z.strictObject({
