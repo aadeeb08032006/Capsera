@@ -189,10 +189,12 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/profiles/me` | Authenticated (`ACTIVE`) | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
-| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | **UNRESOLVED (Member 4):** Category filter / pagination details |
-| `POST /api/v1/skills` | `ADMIN` | **UNRESOLVED (Member 4):** Skill creation payload (`name`, `category`) |
-| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
-| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
+| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
+| `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
+| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
+| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
 | `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
 
 #### GET /api/v1/profiles/me (authenticated, ACTIVE)
@@ -208,6 +210,171 @@ Request: `headline` (max 200), `organization` (max 200), `biography`, `qualifica
 Response `200`: `{ "profile": { ...fields, "updatedAt" } }`.
 
 Both PUT endpoints: unknown fields are rejected with 400; users can edit only their own profile; the wrong role gets 403.
+
+#### GET /api/v1/skills (authenticated, ACTIVE, PROPOSED)
+Query: `category` (optional trimmed string, 1–120 chars; exact case-sensitive match against `skills.category`), `page` (optional integer >= 1, default `1`), `pageSize` (optional integer 1–100, default `20`).
+Ordering: Deterministic alphabetical order (`LOWER(name) ASC, id ASC`).
+Response `200` (paginated via `sendPaginated()`):
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "1",
+        "name": "Node.js",
+        "category": "Backend",
+        "createdAt": "2026-11-03T09:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR` (blank/oversized `category` or invalid `page`/`pageSize`), 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/skills (ADMIN, PROPOSED)
+Request: `{ "name": "Node.js", "category": "Backend" }`
+- `name`: required string, trimmed, 1–120 characters, case-insensitive unique (`uq_skills_name_ci`).
+- `category`: required string, trimmed, 1–120 characters.
+- Unknown fields are rejected with `400 VALIDATION_ERROR`.
+Response `201`:
+```json
+{
+  "success": true,
+  "data": {
+    "skill": {
+      "id": "1",
+      "name": "Node.js",
+      "category": "Backend",
+      "createdAt": "2026-11-03T09:00:00.000Z"
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 409 `CONFLICT` (case-insensitive duplicate skill name).
+
+#### GET /api/v1/profiles/me/skills (TRAINEE, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainee skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainee (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PUT /api/v1/profiles/me/skills (TRAINEE, PROPOSED)
+Replaces the authenticated trainee's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing skill mappings for the trainee. Concurrent requests for the same trainee are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 3 },
+    { "skillId": "2", "proficiency": 4 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- Unknown fields (such as `traineeId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### GET /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainer skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainer (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PUT /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED)
+Replaces the authenticated trainer's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing trainer skill mappings. Concurrent requests for the same trainer are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 4, "yearsOfExperience": 5.5 },
+    { "skillId": "2", "proficiency": 3, "yearsOfExperience": 2.0 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency, yearsOfExperience }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- `yearsOfExperience`: required finite number from `0` to `80` with at most 1 decimal place (`NUMERIC(4,1)`).
+- Unknown fields (such as `trainerId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |
