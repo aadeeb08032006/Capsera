@@ -84,9 +84,9 @@
 |---|---|
 | `VALIDATION_ERROR` | 400 |
 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS` | 401 |
-| `FORBIDDEN`, `ACCOUNT_PENDING`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED` | 403 |
-| `USER_NOT_FOUND` | 404 |
-| `EMAIL_ALREADY_REGISTERED`, `INVALID_STATUS_TRANSITION`, `ROLE_CHANGE_NOT_ALLOWED` | 409 |
+| `FORBIDDEN`, `ACCOUNT_PENDING`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `NOT_ENROLLED`, `ENROLLMENT_INACTIVE` | 403 |
+| `USER_NOT_FOUND`, `COURSE_NOT_FOUND`, `ASSESSMENT_NOT_FOUND`, `QUESTION_NOT_FOUND`, `ATTEMPT_NOT_FOUND` | 404 |
+| `EMAIL_ALREADY_REGISTERED`, `INVALID_STATUS_TRANSITION`, `ROLE_CHANGE_NOT_ALLOWED`, `ASSESSMENT_LOCKED`, `ASSESSMENT_EMPTY`, `ASSESSMENT_NOT_PUBLISHED`, `COURSE_NOT_PUBLISHED`, `DEADLINE_PASSED`, `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_EXPIRED`, `DUPLICATE_QUESTION_ORDER` | 409 |
 | `RATE_LIMITED` | 429 |
 
 ---
@@ -392,19 +392,101 @@ Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `
 | `GET /api/v1/enrollments/me` | `TRAINEE` | **UNRESOLVED:** Progress summary fields included per enrollment |
 | `PATCH /api/v1/enrollments/:enrollmentId/progress` | Enrolled `TRAINEE` | **UNRESOLVED:** Request payload (`lessonId`, `completed`) & completion side-effects |
 
-### 6.4 Assessments, Attempts, Results & Feedback (Owner: Member 3)
-| Method & Path | Access | Contract Status |
-|---|---|---|
-| `POST /api/v1/courses/:courseId/assessments` | Course Owner `TRAINER` | **UNRESOLVED:** Assessment settings payload (`passThreshold`, `maxAttempts`, `deadline`, `durationMinutes`) |
-| `POST /api/v1/assessments/:assessmentId/questions` | Course Owner `TRAINER` | **UNRESOLVED:** Single vs batch MCQ question payload |
-| `POST /api/v1/assessments/:assessmentId/publish` | Course Owner `TRAINER` | **UNRESOLVED:** Minimum question validation rules |
-| `GET /api/v1/assessments/:assessmentId` | Enrolled `TRAINEE` (omits answer key), Owner `TRAINER`, `ADMIN` | **UNRESOLVED:** Role-specific DTO shapes |
-| `POST /api/v1/assessments/:assessmentId/attempts` | Enrolled `TRAINEE` | **UNRESOLVED:** Attempt start payload & timer metadata |
-| `POST /api/v1/attempts/:attemptId/submit` | Attempt Owner `TRAINEE` | **UNRESOLVED:** Submitted answers array format & graded result DTO |
-| `GET /api/v1/attempts/me` | `TRAINEE` | **UNRESOLVED:** Attempt history list fields |
-| `GET /api/v1/courses/:courseId/results` | Course Owner `TRAINER`, `ADMIN` | **UNRESOLVED:** Aggregate vs per-trainee result summary structure |
-| `POST /api/v1/courses/:courseId/feedback` | Enrolled `TRAINEE` | **UNRESOLVED:** Upsert vs edit semantics for 1–5 rating and comment |
-| `GET /api/v1/courses/:courseId/feedback` | Course Owner `TRAINER`, `ADMIN` (or public summary if agreed) | **UNRESOLVED:** Privacy-safe reviewer representation |
+### 6.4 Assessments, Attempts, Results & Feedback (Owner: Member 3, PROPOSED)
+
+**Common rules:** All IDs are strings (`BIGINT`). All request/response keys use `camelCase`. Timestamps are ISO 8601 UTC strings. Protected routes require `Authorization: Bearer <token>` with an `ACTIVE` user (`authenticate`). Correct answers (`correctOption`) and `explanation` are **never** returned to trainees before attempt submission.
+
+#### POST /api/v1/courses/:courseId/assessments (`TRAINER` owner, `ADMIN`)
+Request:
+```json
+{
+  "title": "Synoptic Forecasting Quiz",
+  "instructions": "Answer all MCQs within the time limit.",
+  "deadlineAt": "2026-12-01T18:30:00.000Z",
+  "durationMinutes": 30,
+  "maxAttempts": 2,
+  "passPercentage": 60,
+  "isRequired": true
+}
+```
+- `title` required (1–200 trimmed chars). `instructions`, `deadlineAt`, `durationMinutes` (`>= 1` integer) optional/nullable.
+- Defaults: `maxAttempts = 1`, `passPercentage = 60.00` (`> 0` and `<= 100`), `isRequired = true`, `status = "DRAFT"`.
+- Response `201`: `{ "assessment": { "id", "courseId", "title", "instructions", "deadlineAt", "durationMinutes", "maxAttempts", "passPercentage", "isRequired", "status", "publishedAt", "createdAt", "updatedAt" } }`.
+- Errors: `400 VALIDATION_ERROR`, `401`, `403 FORBIDDEN`, `404 COURSE_NOT_FOUND`.
+
+#### GET /api/v1/courses/:courseId/assessments (Authenticated)
+- Query: `page` (default `1`), `pageSize` (default `20`, max `100`), optional `status` (Trainer owner / Admin only).
+- Course owner `TRAINER` & `ADMIN`: see all statuses (`DRAFT`, `PUBLISHED`, `CLOSED`).
+- `TRAINEE`: must have an `ACTIVE` or `COMPLETED` enrollment in `courseId` (otherwise `403 NOT_ENROLLED` / `ENROLLMENT_INACTIVE`) and sees only `PUBLISHED` assessments.
+- Response `200` (paginated): `items` contain assessment fields + `questionCount` and `totalPoints`.
+
+#### GET /api/v1/assessments/:assessmentId (Authenticated)
+- Course owner `TRAINER` & `ADMIN`: returns `{ "assessment", "questions" }` including `correctOption` and `explanation`.
+- Enrolled `TRAINEE`: only allowed if assessment is `PUBLISHED` and course is `PUBLISHED`; returns `{ "assessment", "questions" }` **omitting** `correctOption` and `explanation`.
+
+#### PATCH /api/v1/assessments/:assessmentId (`TRAINER` owner, `ADMIN`)
+- Request (at least one field): `title`, `instructions`, `deadlineAt`, `durationMinutes`, `maxAttempts`, `passPercentage`, `isRequired`, `status` (`"CLOSED"` only via PATCH; publishing uses `/publish`).
+- If recorded attempts already exist (`SCHEMA-M3-01`), changing `passPercentage`, `maxAttempts`, `durationMinutes`, or `isRequired` returns `409 ASSESSMENT_LOCKED`.
+- Response `200`: `{ "assessment": { ... } }`.
+
+#### POST /api/v1/assessments/:assessmentId/publish (`TRAINER` owner, `ADMIN`)
+- Verifies inside a transaction that at least 1 question exists (`COUNT(questions) >= 1` and `SUM(points) > 0`; else `409 ASSESSMENT_EMPTY`).
+- Transitions `DRAFT` -> `PUBLISHED` and sets `publishedAt = NOW()` (invalid state transition -> `409 INVALID_STATUS_TRANSITION`).
+- Response `200`: `{ "assessment": { ... } }`.
+
+#### DELETE /api/v1/assessments/:assessmentId (`TRAINER` owner, `ADMIN`)
+- Deletes a `DRAFT` (or unattempted) assessment and its questions; rejects with `409 ASSESSMENT_LOCKED` if any attempts exist.
+- Response `200`: `{ "deleted": true, "id": "..." }`.
+
+#### POST /api/v1/assessments/:assessmentId/questions (`TRAINER` owner, `ADMIN`)
+- Request: `{ "questionOrder": 1, "questionText": "...", "optionA": "...", "optionB": "...", "optionC": "...", "optionD": "...", "correctOption": "A", "explanation": "...", "points": 1 }` (`explanation` optional; `points` defaults to `1`; `questionOrder` defaults to `MAX + 1` if omitted).
+- Rejects with `409 ASSESSMENT_LOCKED` if attempts exist; rejects duplicate `questionOrder` with `409 DUPLICATE_QUESTION_ORDER`.
+- Response `201`: `{ "question": { "id", "assessmentId", "questionOrder", "questionText", "optionA", "optionB", "optionC", "optionD", "correctOption", "explanation", "points", "createdAt", "updatedAt" } }`.
+
+#### GET /api/v1/assessments/:assessmentId/questions (Authenticated)
+- Ordered by `questionOrder ASC`.
+- Course owner `TRAINER` / `ADMIN`: includes `correctOption` & `explanation`.
+- Enrolled `TRAINEE`: `PUBLISHED` assessments only; omits `correctOption` & `explanation`.
+- Response `200`: `{ "items": [ ... ] }`.
+
+#### PATCH /api/v1/assessments/:assessmentId/questions/:questionId & DELETE /api/v1/assessments/:assessmentId/questions/:questionId (`TRAINER` owner, `ADMIN`)
+- Rejects deleting or altering `correctOption` / `points` with `409 ASSESSMENT_LOCKED` once attempts exist.
+- `PATCH` returns `200 { "question": { ... } }`; `DELETE` returns `200 { "deleted": true, "id": "..." }`.
+
+#### POST /api/v1/assessments/:assessmentId/attempts (`TRAINEE`)
+- Enforces `ACTIVE` enrollment in `assessment.courseId`, course `PUBLISHED`, assessment `PUBLISHED`, and `NOW() <= deadlineAt` (`409 DEADLINE_PASSED`).
+- Inside a transaction (`SERIALIZABLE` / locked check): expires any timed-out `IN_PROGRESS` attempt (`status = 'EXPIRED'`), blocks if an active non-expired `IN_PROGRESS` attempt already exists (`409 ATTEMPT_IN_PROGRESS` or returns/blocks cleanly), enforces `attemptNumber <= maxAttempts` (`409 ATTEMPT_LIMIT_REACHED`), and inserts `IN_PROGRESS` row.
+- Response `201`: `{ "attempt": { "id", "assessmentId", "traineeId", "attemptNumber", "status", "startedAt", "expiresAt" }, "questions": [ /* sanitized without correctOption/explanation */ ] }`.
+
+#### POST /api/v1/attempts/:attemptId/submit (`TRAINEE` owner)
+- Request: `{ "answers": [ { "questionId": "10", "selectedOption": "B" } ] }` (`selectedOption`: `"A" | "B" | "C" | "D" | null`).
+- Runs inside `withTransaction` with `SELECT ... FROM assessment_attempts WHERE id = $1 FOR UPDATE`.
+- Rejects non-`IN_PROGRESS` attempts with `409 ATTEMPT_ALREADY_SUBMITTED` or `409 ATTEMPT_EXPIRED` (`OPEN-005`). If timed out past `durationMinutes` or `deadlineAt`, transitions attempt to `EXPIRED` and returns `409 ATTEMPT_EXPIRED`.
+- Computes `isCorrect`, `pointsAwarded`, `earnedPoints`, `totalPoints`, `scorePercentage`, `isPassed` exclusively on the server; inserts `attempt_answers`; updates attempt to `GRADED`; checks course completion eligibility (all lessons complete & all required published assessments passed) and transitions `ACTIVE` enrollment to `COMPLETED` when met.
+- Response `200`: `{ "attempt": { ...graded fields }, "answers": [ /* graded review with correctOption & explanation */ ] }`.
+
+#### GET /api/v1/attempts/me (`TRAINEE`)
+- Query: `page`, `pageSize`, optional `courseId`, `assessmentId`.
+- Response `200` (paginated): `{ "items": [ { "id", "assessmentId", "assessmentTitle", "courseId", "courseTitle", "attemptNumber", "status", "earnedPoints", "totalPoints", "scorePercentage", "isPassed", "startedAt", "submittedAt", "gradedAt" } ], "pagination": { ... } }`.
+
+#### GET /api/v1/attempts/:attemptId (`TRAINEE` owner, Course Owner `TRAINER`, `ADMIN`)
+- Returns `{ "attempt", "answers" }`. If `attempt.status === "IN_PROGRESS"`, omits `correctOption`, `isCorrect`, and `explanation`. Once `GRADED`, returns full scorecard review.
+
+#### GET /api/v1/courses/:courseId/results (`TRAINER` owner, `ADMIN`)
+- Query: `page`, `pageSize`, optional `assessmentId`.
+- Response `200`: `{ "summary": { "courseId", "totalAssessments", "totalAttempts", "gradedAttempts", "passedAttempts", "passRate", "averageScorePercentage" }, "items": [ /* per-attempt summary with traineeId, traineeName, assessmentId, assessmentTitle, attemptNumber, status, scorePercentage, isPassed, submittedAt */ ], "pagination": { ... } }`.
+
+#### POST /api/v1/courses/:courseId/feedback (`TRAINEE` enrolled)
+- Requires `ACTIVE` or `COMPLETED` enrollment in `courseId`.
+- Request: `{ "rating": 5, "comment": "Very clear meteorology examples." }` (`rating`: integer `1..5`; `comment`: optional/nullable string, trimmed, max `2000` chars).
+- Upserts `(trainee_id, course_id)` via `ON CONFLICT (trainee_id, course_id) DO UPDATE`.
+- Response `200`: `{ "feedback": { "id", "courseId", "rating", "comment", "createdAt", "updatedAt" } }`.
+
+#### GET /api/v1/courses/:courseId/feedback (Authenticated)
+- Trainees/authenticated learners can view published course feedback; course owner `TRAINER` and `ADMIN` can view any course's feedback.
+- Query: `page`, `pageSize`.
+- Response `200`: `{ "summary": { "courseId", "averageRating", "totalRatings" }, "items": [ { "id", "courseId", "rating", "comment", "reviewerName", "createdAt", "updatedAt" } ], "pagination": { ... } }`.
+- Privacy: Never exposes reviewer email or private profile fields (PRD §6.9).
 
 ### 6.5 Certificates, Announcements & Admin Dashboard (Owner: Member 4)
 | Method & Path | Access | Contract Status |
