@@ -7,6 +7,10 @@ import { sendSuccess } from './shared/response.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import courseRoutes from './modules/courses/course.routes.js';
+import {
+  assessmentRouter,
+  courseAssessmentRouter,
+} from './modules/assessments/assessment.routes.js';
 
 const app = express();
 
@@ -60,7 +64,9 @@ apiRouter.get('/health', async (req, res, next) => {
 });
 
 // Mount /api/v1 prefix (Feature module routers will be registered here by Members 1–4)
+apiRouter.use('/courses/:courseId/assessments', courseAssessmentRouter);
 apiRouter.use('/courses', courseRoutes);
+apiRouter.use('/assessments', assessmentRouter);
 app.use(env.apiPrefix, apiRouter);
 
 // Fallback & error handlers
