@@ -21,7 +21,7 @@ This document tracks architectural and technical decisions that refine or operat
 | OPEN-006 | Test Runner Selection (Backend & Frontend) | **UNRESOLVED (Pending Team Decision)** | All Members |
 | OPEN-007 | Enrollment Cancellation & Re-Enrollment Policy (`enrollments`) | **UNRESOLVED (Pending Member 2 & Team Decision)** | Member 2 |
 | OPEN-008 | Migration Version Ledger (`schema_migrations`) & Execution Runner Strategy | **PROPOSED (Pending Formal Team Approval)** | All Members |
-| OPEN-009 | Durable Audit Event Persistence (`audit_logs` Infrastructure Table Proposal for PRD Section 8.1) | **PROPOSED (Pending Formal Team Approval)** | All Members |
+| OPEN-009 | Durable Audit Event Persistence (`audit_logs` Infrastructure Table Proposal for PRD Section 8.1) | **APPROVED (Team Decision)** | All Members |
 
 ---
 
@@ -450,7 +450,8 @@ End of PRD — Version 1.0
 ### OPEN-009: Durable Audit Event Persistence (`audit_logs` Infrastructure Table Proposal for PRD Section 8.1)
 - **PRD Reference:** Section 8.1 (*"Record audit events for admin approval, role changes, suspension, and certificate issuance."*) & Section 10.4 / Section 19 (Change control for extra entities).
 - **Audit Finding:** Ephemeral application `stdout`/console logs do **not** provide durable, queryable audit persistence across restarts/deployments, and updating `users.status` (`PENDING` → `ACTIVE` → `SUSPENDED` → `ACTIVE`) or `users.role` in place overwrites previous state (`users.approved_by`/`approved_at` and `certificates.issued_at`/`revoked_at` record only the latest snapshot).
-- **Proposed PRD Section 19 Deviation (Pending 4-Member Approval):**
+- **Status:** APPROVED by All Members (2026-11-14)
+- **Approved PRD Section 19 Deviation:**
   1. **Requirement/Section Changed:** PRD Section 10.4 / Section 12 — authorize one append-only technical audit table (`audit_logs`) alongside the 18 canonical domain entities to fulfill PRD Section 8.1.
   2. **Proposed DDL (`006_create_audit_logs.sql` upon approval):** `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`, `actor_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL`, `event_type VARCHAR(60) NOT NULL` (`'USER_APPROVED'`, `'USER_REJECTED'`, `'USER_SUSPENDED'`, `'USER_REACTIVATED'`, `'USER_ROLE_CHANGED'`, `'CERTIFICATE_ISSUED'`, `'CERTIFICATE_REVOKED'`), `target_entity VARCHAR(60) NOT NULL`, `target_id BIGINT NOT NULL`, `details JSONB NULL` (e.g., `{ "previousRole": "TRAINEE", "newRole": "TRAINER" }`), `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`, indexed on `(target_entity, target_id, created_at DESC)` and `(actor_user_id, created_at DESC)`.
   3. **Transactional Guarantee:** Every admin governance mutation and certificate issuance/revocation writes its `audit_logs` row inside the **same** `withTransaction` block as the primary domain mutation.
