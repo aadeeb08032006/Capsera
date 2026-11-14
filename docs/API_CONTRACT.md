@@ -189,11 +189,13 @@ Request: `{ "role": "TRAINER" }`
 | `GET /api/v1/profiles/me` | Authenticated (`ACTIVE`) | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainee` | `TRAINEE` | Specified below (Member 1, PROPOSED) |
 | `PUT /api/v1/profiles/me/trainer` | `TRAINER` | Specified below (Member 1, PROPOSED) |
-| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | **UNRESOLVED (Member 4):** Category filter / pagination details |
-| `POST /api/v1/skills` | `ADMIN` | **UNRESOLVED (Member 4):** Skill creation payload (`name`, `category`) |
-| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | **UNRESOLVED (Member 4):** Proficiency enum/scale representation |
-| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | **UNRESOLVED (Member 4):** Proficiency & `yearsOfExperience` structure |
-| `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **UNRESOLVED (Member 4):** Exact match-explanation object structure |
+| `GET /api/v1/skills` | Authenticated (`ACTIVE`) | Specified below (Member 4, PROPOSED) |
+| `POST /api/v1/skills` | `ADMIN` | Specified below (Member 4, PROPOSED) |
+| `PUT /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/skills` | `TRAINEE` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
+| `PUT /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED) |
+| `GET /api/v1/profiles/me/trainer-skills` | `TRAINER` | Specified below (Member 4, PROPOSED — extends original endpoint map, pending team approval) |
+| `GET /api/v1/trainers/recommendations?skillId=:skillId` | `TRAINEE`, `ADMIN` | **PROPOSED (Member 4):** Pending team approval on explanation object structure and pagination fields |
 
 #### GET /api/v1/profiles/me (authenticated, ACTIVE)
 Response `200`: `{ "user": { "id", "fullName", "email", "role" }, "profile": { ... } | null }`.
@@ -208,6 +210,227 @@ Request: `headline` (max 200), `organization` (max 200), `biography`, `qualifica
 Response `200`: `{ "profile": { ...fields, "updatedAt" } }`.
 
 Both PUT endpoints: unknown fields are rejected with 400; users can edit only their own profile; the wrong role gets 403.
+
+#### GET /api/v1/skills (authenticated, ACTIVE, PROPOSED)
+Query: `category` (optional trimmed string, 1–120 chars; exact case-sensitive match against `skills.category`), `page` (optional integer >= 1, default `1`), `pageSize` (optional integer 1–100, default `20`).
+Ordering: Deterministic alphabetical order (`LOWER(name) ASC, id ASC`).
+Response `200` (paginated via `sendPaginated()`):
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "1",
+        "name": "Node.js",
+        "category": "Backend",
+        "createdAt": "2026-11-03T09:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR` (blank/oversized `category` or invalid `page`/`pageSize`), 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/skills (ADMIN, PROPOSED)
+Request: `{ "name": "Node.js", "category": "Backend" }`
+- `name`: required string, trimmed, 1–120 characters, case-insensitive unique (`uq_skills_name_ci`).
+- `category`: required string, trimmed, 1–120 characters.
+- Unknown fields are rejected with `400 VALIDATION_ERROR`.
+Response `201`:
+```json
+{
+  "success": true,
+  "data": {
+    "skill": {
+      "id": "1",
+      "name": "Node.js",
+      "category": "Backend",
+      "createdAt": "2026-11-03T09:00:00.000Z"
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 409 `CONFLICT` (case-insensitive duplicate skill name).
+
+#### GET /api/v1/profiles/me/skills (TRAINEE, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainee skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainee (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PUT /api/v1/profiles/me/skills (TRAINEE, PROPOSED)
+Replaces the authenticated trainee's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing skill mappings for the trainee. Concurrent requests for the same trainee are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 3 },
+    { "skillId": "2", "proficiency": 4 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- Unknown fields (such as `traineeId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "10",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 3
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### GET /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED — extends original endpoint map)
+> **Note:** This endpoint extends the original PRD endpoint map to support frontend page-refresh hydration of trainer skill mappings and requires team approval.
+
+Fetches all saved skill mappings for the authenticated trainer (`req.user.id`), joined with canonical `skills` metadata in deterministic alphabetical order (`LOWER(s.name) ASC, s.id ASC`). Returns `skills: []` if no mappings exist.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PUT /api/v1/profiles/me/trainer-skills (TRAINER, PROPOSED)
+Replaces the authenticated trainer's entire skill mapping atomically (**replace-all semantics**). Sending `{ "skills": [] }` clears all existing trainer skill mappings. Concurrent requests for the same trainer are serialized via a `FOR UPDATE` row lock on `users` inside a transaction.
+Request:
+```json
+{
+  "skills": [
+    { "skillId": "1", "proficiency": 4, "yearsOfExperience": 5.5 },
+    { "skillId": "2", "proficiency": 3, "yearsOfExperience": 2.0 }
+  ]
+}
+```
+- `skills`: required array of `{ skillId, proficiency, yearsOfExperience }` objects (may be empty `[]`).
+- `skillId`: required positive PostgreSQL BIGINT string; duplicate `skillId` entries in the same request are rejected (`400 VALIDATION_ERROR`).
+- `proficiency`: required integer `1..4` (`1 = BEGINNER`, `2 = INTERMEDIATE`, `3 = ADVANCED`, `4 = EXPERT`).
+- `yearsOfExperience`: required finite number from `0` to `80` with at most 1 decimal place (`NUMERIC(4,1)`).
+- Unknown fields (such as `trainerId`) are rejected with `400 VALIDATION_ERROR`; ownership is derived exclusively from `req.user.id`.
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skills": [
+      {
+        "id": "20",
+        "skillId": "1",
+        "skillName": "Node.js",
+        "category": "Backend",
+        "proficiency": 4,
+        "yearsOfExperience": 5.5
+      }
+    ]
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND` (one or more `skillId` values do not exist in `skills`).
+
+#### GET /api/v1/trainers/recommendations (`TRAINEE`, `ADMIN`, PROPOSED)
+Returns deterministic, explainable trainer recommendations for a canonical skill.
+
+> **PROPOSED (Member 4):** The `explanation` object shape and `pagination` fields below are proposed pending team approval.
+
+Query parameters:
+- `skillId` (required, positive PostgreSQL `BIGINT` string)
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Matching & ranking rules (`PRD` Section 6.8 & `FR-13`):
+- Exact match on `trainer_skills.skill_id = skillId`
+- Eligible trainers only (`users.role = 'TRAINER'` and `users.status = 'ACTIVE'`)
+- Ordered deterministically by `trainer_skills.proficiency DESC`, then skill-specific `trainer_skills.years_of_experience DESC`, then `LOWER(users.full_name) ASC`, then `users.id ASC`
+- Profile metadata is `LEFT JOIN`ed from `trainer_profiles` (`null` when no profile row exists)
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "skill": {
+      "id": "1",
+      "name": "Node.js",
+      "category": "Backend"
+    },
+    "items": [
+      {
+        "trainerId": "12",
+        "fullName": "Jane Doe",
+        "headline": "Principal Node.js Architect",
+        "organization": "Capsera Labs",
+        "subjectExpertise": "Distributed Systems",
+        "proficiency": 4,
+        "proficiencyLabel": "EXPERT",
+        "yearsOfExperience": 5.5,
+        "explanation": {
+          "matchedSkill": "Node.js",
+          "proficiency": 4,
+          "proficiencyLabel": "EXPERT",
+          "yearsOfExperience": 5.5,
+          "summary": "Matches Node.js; expert proficiency; 5.5 years' experience."
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND`.
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
 | Method & Path | Access | Contract Status |
@@ -326,9 +549,84 @@ Request:
 |---|---|---|
 | `GET /api/v1/certificates/me` | `TRAINEE` | **UNRESOLVED:** Certificate DTO fields & trigger timing (automatic on completion vs on-demand) |
 | `GET /api/v1/certificates/verify/:certificateCode` | Public | **UNRESOLVED:** Minimal public verification fields (privacy-preserving) |
-| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (all) | **UNRESOLVED:** Category enum values & pagination |
-| `POST /api/v1/announcements` | `ADMIN` | **UNRESOLVED:** Create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
-| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **UNRESOLVED:** Edit/publish/archive payload |
+| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (`scope=admin`) | **PROPOSED (Member 4):** Pending team approval on category enum, `scope=admin` filter, and pagination DTO |
+| `POST /api/v1/announcements` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
+| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on edit/publish/archive payload and terminal `ARCHIVED` transition |
 | `GET /api/v1/admin/dashboard/summary` | `ADMIN` | **UNRESOLVED:** Exact metric keys for users, courses, enrollments, attempts, certificates |
 | `GET /api/v1/admin/dashboard/assessment-performance` | `ADMIN` | **UNRESOLVED:** Pass rate / subject breakdown response structure |
+
+#### GET /api/v1/announcements (Public / `ADMIN`, PROPOSED)
+Returns paginated homepage announcements (`PRD` Section 6.10 & `FR-12`).
+
+> **PROPOSED (Member 4):** Pending team approval on query filters (`category`, `scope=admin`, `status`), response DTO, and pagination fields.
+
+Query parameters:
+- `category` (optional: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`)
+- `scope` (optional: `public` default | `admin` for `ACTIVE` `ADMIN` users only)
+- `status` (optional, allowed only when `scope=admin`: `DRAFT` | `PUBLISHED` | `ARCHIVED`)
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Visibility rules:
+- `scope=public`: returns only `status = 'PUBLISHED' AND published_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())`, ordered by `published_at DESC, id DESC`.
+- `scope=admin` (authenticated `ACTIVE` `ADMIN` only): returns all matching rows (`DRAFT`, `PUBLISHED`, `ARCHIVED`, including expired entries), ordered by `updated_at DESC, id DESC`.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "10",
+        "creatorId": "1",
+        "creatorName": "Platform Admin",
+        "title": "Spring Onboarding Open",
+        "body": "Enrollment for Q2 foundational modules is now open.",
+        "category": "ANNOUNCEMENT",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-14T08:00:00.000Z",
+        "expiresAt": null,
+        "createdAt": "2026-11-14T07:55:00.000Z",
+        "updatedAt": "2026-11-14T08:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED` (`scope=admin`/`status` without token or invalid token), 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/announcements (`ADMIN`, PROPOSED)
+Creates a new announcement as `DRAFT` (default) or immediately `PUBLISHED`. Creator ownership is derived from `req.user.id`.
+
+Request:
+```json
+{
+  "title": "Spring Onboarding Open",
+  "body": "Enrollment for Q2 foundational modules is now open.",
+  "category": "ANNOUNCEMENT",
+  "status": "DRAFT",
+  "expiresAt": "2026-12-01T00:00:00.000Z"
+}
+```
+- `category`: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`.
+- `status`: optional `DRAFT` (default) | `PUBLISHED` (sets `publishedAt` automatically on creation).
+- `expiresAt`: optional nullable ISO 8601 datetime with timezone (`expiresAt > publishedAt` required when published).
+- Unknown fields (such as `creatorId` or `publishedAt`) are rejected with `400 VALIDATION_ERROR`.
+
+Response `201`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PATCH /api/v1/announcements/:announcementId (`ADMIN`, PROPOSED)
+Updates announcement content (`title`, `body`, `category`, `expiresAt`), publishes (`DRAFT -> PUBLISHED`), or archives (`DRAFT -> ARCHIVED`, `PUBLISHED -> ARCHIVED`). `ARCHIVED` is terminal (cannot be edited or restored); `PUBLISHED -> DRAFT` is rejected with `409 CONFLICT`.
+
+Request: `{ "title"?, "body"?, "category"?, "status"?, "expiresAt"? }` (at least one field required).
+Response `200`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `ANNOUNCEMENT_NOT_FOUND`, 409 `CONFLICT`.
 

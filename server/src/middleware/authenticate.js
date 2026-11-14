@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { executeQuery } from '../config/db.js';
 import { AppError } from '../shared/AppError.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
+import { mapUser } from '../modules/auth/mapUser.js';
 
 export const authenticate = asyncHandler(async (req, _res, next) => {
   const authHeader = req.headers.authorization;
@@ -27,7 +28,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   }
 
   const result = await executeQuery(
-    'SELECT id, full_name, email, role, status FROM users WHERE id = $1',
+    'SELECT id, full_name, email, role, status, created_at FROM users WHERE id = $1',
     [decoded.sub],
   );
 
@@ -50,13 +51,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     throw new AppError(403, 'FORBIDDEN', 'Your account is not active');
   }
 
-  req.user = {
-    id: String(row.id),
-    fullName: row.full_name,
-    email: row.email,
-    role: row.role,
-    status: row.status,
-  };
+  req.user = mapUser(row);
 
   next();
 });
