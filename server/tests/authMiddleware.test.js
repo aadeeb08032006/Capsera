@@ -128,6 +128,7 @@ describe('Auth Middleware', () => {
           email: 'trainee@example.com',
           role: 'TRAINEE',
           status: 'ACTIVE',
+          created_at: new Date('2026-11-12T05:00:00.000Z'),
         },
       ],
     });
@@ -151,6 +152,7 @@ describe('Auth Middleware', () => {
           email: 'admin@example.com',
           role: 'ADMIN',
           status: 'ACTIVE',
+          created_at: new Date('2026-11-12T05:00:00.000Z'),
         },
       ],
     });
@@ -167,6 +169,7 @@ describe('Auth Middleware', () => {
       email: 'admin@example.com',
       role: 'ADMIN',
       status: 'ACTIVE',
+      createdAt: '2026-11-12T05:00:00.000Z',
     });
   });
 });
