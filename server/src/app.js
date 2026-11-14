@@ -6,7 +6,10 @@ import { checkDatabaseConnection } from './config/db.js';
 import { sendSuccess } from './shared/response.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { authenticate } from './middleware/authenticate.js';
+import { requireRole } from './middleware/requireRole.js';
 import authRouter from './modules/auth/auth.routes.js';
+import adminUserRouter from './modules/users/user.routes.js';
 import courseRoutes from './modules/courses/course.routes.js';
 
 const app = express();
@@ -32,6 +35,7 @@ app.use((req, res, next) => {
 // Canonical /api/v1 router
 const apiRouter = express.Router();
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/admin/users', authenticate, requireRole('ADMIN'), adminUserRouter);
 
 /**
  * GET /api/v1/health
