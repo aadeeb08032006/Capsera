@@ -15,24 +15,27 @@ export const positiveIdSchema = z
   .trim()
   .regex(POSITIVE_BIGINT_STRING_REGEX, 'ID must be a positive integer');
 
-const optionalNullableUrlSchema = z
-  .string()
-  .trim()
-  .max(2048, 'thumbnailUrl must be 2048 characters or fewer')
-  .transform((val) => (val.length === 0 ? null : val))
-  .refine((value) => {
-    if (value === null) return true;
-    try {
-      const parsed = new URL(value);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }, 'thumbnailUrl must be a valid http or https URL')
-  .nullable()
-  .optional();
+export const optionalNullableHttpUrlSchema = (fieldName = 'url', maxLength = 2048) =>
+  z
+    .string()
+    .trim()
+    .max(maxLength, `${fieldName} must be ${maxLength} characters or fewer`)
+    .transform((val) => (val.length === 0 ? null : val))
+    .refine((value) => {
+      if (value === null) return true;
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }, `${fieldName} must be a valid http or https URL`)
+    .nullable()
+    .optional();
 
-const optionalNullableTrimmedString = (maxLength, fieldName) =>
+const optionalNullableUrlSchema = optionalNullableHttpUrlSchema('thumbnailUrl');
+
+export const optionalNullableTrimmedString = (maxLength, fieldName) =>
   z
     .string()
     .trim()
