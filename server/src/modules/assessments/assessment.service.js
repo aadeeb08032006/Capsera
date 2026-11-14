@@ -363,3 +363,267 @@ export async function deleteAssessment(assessmentId, actor) {
     return { deleted: true, id: String(assessmentId) };
   });
 }
+
+/**
+ * Create a question in the assessment question bank.
+ */
+export async function createQuestion(assessmentId, payload, actor) {
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (actor.role !== ROLES.ADMIN && String(assessment.course_trainer_id) !== String(actor.id)) {
+    throw new AppError(403, 'FORBIDDEN', 'You can only add questions to your own courses');
+  }
+
+  const hasAttempts = await hasAssessmentAttempts(assessmentId);
+  if (hasAttempts) {
+    throw new AppError(
+      409,
+      'ASSESSMENT_LOCKED',
+      'Cannot add questions to an assessment with recorded attempts',
+    );
+  }
+
+  let questionOrder = payload.questionOrder;
+  if (questionOrder === undefined || questionOrder === null) {
+    const orderRes = await runSql(
+      'SELECT COALESCE(MAX(question_order), 0) + 1 AS next_order FROM questions WHERE assessment_id = $1',
+      [String(assessmentId)],
+    );
+    questionOrder = Number(orderRes.rows[0]?.next_order || 1);
+  }
+
+  const insertSql = `
+    INSERT INTO questions (
+      assessment_id,
+      question_order,
+      question_text,
+      option_a,
+      option_b,
+      option_c,
+      option_d,
+      correct_option,
+      explanation,
+      points
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING *
+  `;
+
+  const params = [
+    String(assessmentId),
+    questionOrder,
+    payload.questionText,
+    payload.optionA,
+    payload.optionB,
+    payload.optionC,
+    payload.optionD,
+    payload.correctOption,
+    payload.explanation ?? null,
+    payload.points ?? 1,
+  ];
+
+  const result = await runSql(insertSql, params);
+  return mapQuestionRow(result.rows[0], actor.role);
+}
+
+/**
+ * List questions in an assessment ordered by question_order (sanitized for trainees).
+ */
+export async function listQuestionsByAssessment(assessmentId, actor) {
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (actor.role === ROLES.TRAINEE) {
+    if (assessment.status !== ASSESSMENT_STATUSES.PUBLISHED) {
+      throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
+    }
+    await verifyCourseEnrollment(assessment.course_id, actor.id, {
+      requirePublishedCourse: true,
+      allowedStatuses: [ENROLLMENT_STATUSES.ACTIVE, ENROLLMENT_STATUSES.COMPLETED],
+    });
+  } else if (actor.role === ROLES.TRAINER) {
+    if (actor.role !== ROLES.ADMIN && String(assessment.course_trainer_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'You can only view questions for your own courses');
+    }
+  } else if (actor.role !== ROLES.ADMIN) {
+    throw new AppError(403, 'FORBIDDEN', 'Access denied');
+  }
+
+  const questionsSql = `
+    SELECT
+      id,
+      assessment_id,
+      question_order,
+      question_text,
+      option_a,
+      option_b,
+      option_c,
+      option_d,
+      correct_option,
+      explanation,
+      points,
+      created_at,
+      updated_at
+    FROM questions
+    WHERE assessment_id = $1
+    ORDER BY question_order ASC
+  `;
+
+  const result = await runSql(questionsSql, [String(assessmentId)]);
+  return {
+    items: result.rows.map((row) => mapQuestionRow(row, actor.role)),
+  };
+}
+
+/**
+ * Get a single question by assessment ID and question ID (sanitized for trainees).
+ */
+export async function getQuestionById(assessmentId, questionId, actor) {
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (actor.role === ROLES.TRAINEE) {
+    if (assessment.status !== ASSESSMENT_STATUSES.PUBLISHED) {
+      throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
+    }
+    await verifyCourseEnrollment(assessment.course_id, actor.id, {
+      requirePublishedCourse: true,
+      allowedStatuses: [ENROLLMENT_STATUSES.ACTIVE, ENROLLMENT_STATUSES.COMPLETED],
+    });
+  } else if (actor.role === ROLES.TRAINER) {
+    if (actor.role !== ROLES.ADMIN && String(assessment.course_trainer_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'You can only view questions for your own courses');
+    }
+  } else if (actor.role !== ROLES.ADMIN) {
+    throw new AppError(403, 'FORBIDDEN', 'Access denied');
+  }
+
+  const sql = `
+    SELECT
+      id,
+      assessment_id,
+      question_order,
+      question_text,
+      option_a,
+      option_b,
+      option_c,
+      option_d,
+      correct_option,
+      explanation,
+      points,
+      created_at,
+      updated_at
+    FROM questions
+    WHERE id = $1 AND assessment_id = $2
+  `;
+
+  const result = await runSql(sql, [String(questionId), String(assessmentId)]);
+  if (!result.rows.length) {
+    throw new AppError(404, 'QUESTION_NOT_FOUND', 'Question not found in this assessment');
+  }
+
+  return {
+    question: mapQuestionRow(result.rows[0], actor.role),
+  };
+}
+
+/**
+ * Update an existing question with attempt-locking safeguards.
+ */
+export async function updateQuestion(assessmentId, questionId, updates, actor) {
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (actor.role !== ROLES.ADMIN && String(assessment.course_trainer_id) !== String(actor.id)) {
+    throw new AppError(403, 'FORBIDDEN', 'You can only update questions for your own courses');
+  }
+
+  const qCheck = await runSql(
+    'SELECT * FROM questions WHERE id = $1 AND assessment_id = $2',
+    [String(questionId), String(assessmentId)],
+  );
+  if (!qCheck.rows.length) {
+    throw new AppError(404, 'QUESTION_NOT_FOUND', 'Question not found in this assessment');
+  }
+  const existingQuestion = qCheck.rows[0];
+
+  const hasAttempts = await hasAssessmentAttempts(assessmentId);
+  if (hasAttempts) {
+    const isScoringChanged =
+      (updates.correctOption !== undefined && updates.correctOption !== existingQuestion.correct_option) ||
+      (updates.points !== undefined && Number(updates.points) !== Number(existingQuestion.points));
+
+    if (isScoringChanged) {
+      throw new AppError(
+        409,
+        'ASSESSMENT_LOCKED',
+        'Cannot modify correct option or points once attempts have been recorded',
+      );
+    }
+  }
+
+  const setClauses = [];
+  const params = [String(questionId), String(assessmentId)];
+
+  const addField = (column, value) => {
+    params.push(value);
+    setClauses.push(`${column} = $${params.length}`);
+  };
+
+  if (updates.questionOrder !== undefined) addField('question_order', updates.questionOrder);
+  if (updates.questionText !== undefined) addField('question_text', updates.questionText);
+  if (updates.optionA !== undefined) addField('option_a', updates.optionA);
+  if (updates.optionB !== undefined) addField('option_b', updates.optionB);
+  if (updates.optionC !== undefined) addField('option_c', updates.optionC);
+  if (updates.optionD !== undefined) addField('option_d', updates.optionD);
+  if (updates.correctOption !== undefined) addField('correct_option', updates.correctOption);
+  if (updates.explanation !== undefined) addField('explanation', updates.explanation);
+  if (updates.points !== undefined) addField('points', updates.points);
+
+  if (setClauses.length === 0) {
+    return mapQuestionRow(existingQuestion, actor.role);
+  }
+
+  setClauses.push('updated_at = CURRENT_TIMESTAMP');
+
+  const updateSql = `
+    UPDATE questions
+    SET ${setClauses.join(', ')}
+    WHERE id = $1 AND assessment_id = $2
+    RETURNING *
+  `;
+
+  const result = await runSql(updateSql, params);
+  return mapQuestionRow(result.rows[0], actor.role);
+}
+
+/**
+ * Delete a question from an unattempted assessment.
+ */
+export async function deleteQuestion(assessmentId, questionId, actor) {
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (actor.role !== ROLES.ADMIN && String(assessment.course_trainer_id) !== String(actor.id)) {
+    throw new AppError(403, 'FORBIDDEN', 'You can only delete questions for your own courses');
+  }
+
+  const qCheck = await runSql(
+    'SELECT id FROM questions WHERE id = $1 AND assessment_id = $2',
+    [String(questionId), String(assessmentId)],
+  );
+  if (!qCheck.rows.length) {
+    throw new AppError(404, 'QUESTION_NOT_FOUND', 'Question not found in this assessment');
+  }
+
+  const hasAttempts = await hasAssessmentAttempts(assessmentId);
+  if (hasAttempts) {
+    throw new AppError(
+      409,
+      'ASSESSMENT_LOCKED',
+      'Cannot delete questions from an assessment with recorded attempts',
+    );
+  }
+
+  await runSql(
+    'DELETE FROM questions WHERE id = $1 AND assessment_id = $2',
+    [String(questionId), String(assessmentId)],
+  );
+
+  return { deleted: true, id: String(questionId) };
+}

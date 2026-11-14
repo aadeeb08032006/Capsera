@@ -58,6 +58,26 @@ function makeAssessmentRow(overrides = {}) {
   };
 }
 
+function makeQuestionRow(overrides = {}) {
+  const now = new Date('2026-11-14T10:00:00.000Z');
+  return {
+    id: '101',
+    assessment_id: '1',
+    question_order: 1,
+    question_text: 'What causes geostrophic wind?',
+    option_a: 'Balance between Coriolis force and pressure gradient force',
+    option_b: 'Frictional drag only',
+    option_c: 'Centrifugal acceleration only',
+    option_d: 'Thermal convection only',
+    correct_option: 'A',
+    explanation: 'Geostrophic balance occurs when Coriolis and pressure gradient forces are equal and opposite.',
+    points: 2,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  };
+}
+
 describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/assessments)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -573,6 +593,428 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toEqual({ deleted: true, id: '1' });
+    });
+  });
+
+  describe('POST /api/v1/assessments/:assessmentId/questions (Create Question)', () => {
+    it('allows course owner TRAINER to create an MCQ question (201 Created)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // hasAssessmentAttempts: false
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: false }] });
+      // insert question
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101', question_order: 1 })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({
+          questionOrder: 1,
+          questionText: 'What causes geostrophic wind?',
+          optionA: 'Balance between Coriolis force and pressure gradient force',
+          optionB: 'Frictional drag only',
+          optionC: 'Centrifugal acceleration only',
+          optionD: 'Thermal convection only',
+          correctOption: 'A',
+          explanation: 'Geostrophic balance occurs when Coriolis and pressure gradient forces are equal and opposite.',
+          points: 2,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.question).toMatchObject({
+        id: '101',
+        assessmentId: '1',
+        questionOrder: 1,
+        questionText: 'What causes geostrophic wind?',
+        correctOption: 'A',
+        points: 2,
+      });
+    });
+
+    it('auto-computes questionOrder as MAX + 1 when omitted (SCHEMA-M3-02)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // hasAssessmentAttempts: false
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: false }] });
+      // next order query
+      executeQuery.mockResolvedValueOnce({ rows: [{ next_order: '4' }] });
+      // insert question
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '104', question_order: 4 })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({
+          questionText: 'Fourth question text',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'B',
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.question.questionOrder).toBe(4);
+    });
+
+    it('rejects duplicate questionOrder with 409 DUPLICATE_QUESTION_ORDER', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // hasAssessmentAttempts: false
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: false }] });
+      // insert throws unique violation on uq_questions_assessment_order
+      const dbErr = new Error('duplicate key value violates unique constraint');
+      dbErr.code = '23505';
+      dbErr.constraint = 'uq_questions_assessment_order';
+      executeQuery.mockRejectedValueOnce(dbErr);
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({
+          questionOrder: 1,
+          questionText: 'Duplicate question text',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'C',
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('DUPLICATE_QUESTION_ORDER');
+    });
+
+    it('rejects adding questions if assessment already has attempts (409 ASSESSMENT_LOCKED)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // hasAssessmentAttempts: true!
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: true }] });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({
+          questionText: 'Late question',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'A',
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ASSESSMENT_LOCKED');
+    });
+
+    it('forbids TRAINEE from creating questions (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          questionText: 'Trainee question',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'A',
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('rejects non-owner trainer from creating questions (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '55', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('55')}`)
+        .send({
+          questionText: 'Intruder question',
+          optionA: 'A',
+          optionB: 'B',
+          optionC: 'C',
+          optionD: 'D',
+          correctOption: 'A',
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('GET /api/v1/assessments/:assessmentId/questions (List Questions)', () => {
+    it('returns questions with correctOption and explanation for TRAINER owner', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // questions query
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.items).toHaveLength(1);
+      expect(res.body.data.items[0]).toMatchObject({
+        id: '101',
+        correctOption: 'A',
+        explanation: 'Geostrophic balance occurs when Coriolis and pressure gradient forces are equal and opposite.',
+      });
+    });
+
+    it('strictly sanitizes questions for TRAINEE (strips correctOption and explanation)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // findAssessmentWithCourse (PUBLISHED)
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', status: 'PUBLISHED', course_status: 'PUBLISHED' })],
+      });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '500', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // questions query
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const question = res.body.data.items[0];
+      expect(question.questionText).toBe('What causes geostrophic wind?');
+      expect(question.correctOption).toBeUndefined();
+      expect(question.explanation).toBeUndefined();
+    });
+
+    it('rejects TRAINEE requesting questions of DRAFT assessment (404 ASSESSMENT_NOT_FOUND)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', status: 'DRAFT' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/assessments/1/questions')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('ASSESSMENT_NOT_FOUND');
+    });
+  });
+
+  describe('GET /api/v1/assessments/:assessmentId/questions/:questionId (Get Question)', () => {
+    it('returns single question for course owner trainer', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question query
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.question.id).toBe('101');
+      expect(res.body.data.question.correctOption).toBe('A');
+    });
+
+    it('returns 404 QUESTION_NOT_FOUND when question does not exist', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question query returns empty
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/assessments/1/questions/999')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('QUESTION_NOT_FOUND');
+    });
+  });
+
+  describe('PATCH /api/v1/assessments/:assessmentId/questions/:questionId (Update Question)', () => {
+    it('allows trainer to update question text and options', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101' })],
+      });
+      // hasAssessmentAttempts: false
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: false }] });
+      // update query
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101', question_text: 'Updated question text' })],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ questionText: 'Updated question text' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.question.questionText).toBe('Updated question text');
+    });
+
+    it('locks correctOption and points if attempts exist (409 ASSESSMENT_LOCKED)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101', correct_option: 'A', points: 2 })],
+      });
+      // hasAssessmentAttempts: true!
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: true }] });
+
+      const res = await request(app)
+        .patch('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ correctOption: 'B' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ASSESSMENT_LOCKED');
+      expect(res.body.error.message).toContain('Cannot modify correct option or points once attempts have been recorded');
+    });
+
+    it('allows updating non-scoring fields (questionText) even if attempts exist', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101', correct_option: 'A', points: 2 })],
+      });
+      // hasAssessmentAttempts: true
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: true }] });
+      // update query succeeds
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeQuestionRow({ id: '101', question_text: 'Fix minor typo' })],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ questionText: 'Fix minor typo' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.question.questionText).toBe('Fix minor typo');
+    });
+  });
+
+  describe('DELETE /api/v1/assessments/:assessmentId/questions/:questionId (Delete Question)', () => {
+    it('deletes question when no attempts exist', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '101' }],
+      });
+      // hasAssessmentAttempts: false
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: false }] });
+      // delete query
+      executeQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+      const res = await request(app)
+        .delete('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ deleted: true, id: '101' });
+    });
+
+    it('rejects deleting question if attempts exist (409 ASSESSMENT_LOCKED)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '101' }],
+      });
+      // hasAssessmentAttempts: true!
+      executeQuery.mockResolvedValueOnce({ rows: [{ has_attempts: true }] });
+
+      const res = await request(app)
+        .delete('/api/v1/assessments/1/questions/101')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ASSESSMENT_LOCKED');
+      expect(res.body.error.message).toContain('Cannot delete questions from an assessment with recorded attempts');
+    });
+
+    it('returns 404 QUESTION_NOT_FOUND when deleting non-existent question', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', course_trainer_id: '10' })],
+      });
+      // question check returns empty
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .delete('/api/v1/assessments/1/questions/999')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('QUESTION_NOT_FOUND');
     });
   });
 });

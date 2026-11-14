@@ -2,11 +2,14 @@ import { asyncHandler } from '../../shared/asyncHandler.js';
 import { sendPaginated, sendSuccess } from '../../shared/response.js';
 import {
   assessmentIdParamSchema,
+  assessmentQuestionParamsSchema,
   courseIdParamSchema,
   createAssessmentBodySchema,
+  createQuestionBodySchema,
   listAssessmentsQuerySchema,
   parseWithSchema,
   updateAssessmentBodySchema,
+  updateQuestionBodySchema,
 } from './assessment.validation.js';
 import * as assessmentService from './assessment.service.js';
 
@@ -46,5 +49,42 @@ export const publishAssessmentHandler = asyncHandler(async (req, res) => {
 export const deleteAssessmentHandler = asyncHandler(async (req, res) => {
   const { assessmentId } = parseWithSchema(assessmentIdParamSchema, req.params);
   const outcome = await assessmentService.deleteAssessment(assessmentId, req.user);
+  return sendSuccess(res, outcome);
+});
+
+export const createQuestionHandler = asyncHandler(async (req, res) => {
+  const { assessmentId } = parseWithSchema(assessmentIdParamSchema, req.params);
+  const payload = parseWithSchema(createQuestionBodySchema, req.body ?? {});
+  const question = await assessmentService.createQuestion(assessmentId, payload, req.user);
+  return sendSuccess(res, { question }, 201);
+});
+
+export const listQuestionsHandler = asyncHandler(async (req, res) => {
+  const { assessmentId } = parseWithSchema(assessmentIdParamSchema, req.params);
+  const result = await assessmentService.listQuestionsByAssessment(assessmentId, req.user);
+  return sendSuccess(res, result);
+});
+
+export const getQuestionHandler = asyncHandler(async (req, res) => {
+  const { assessmentId, questionId } = parseWithSchema(assessmentQuestionParamsSchema, req.params);
+  const result = await assessmentService.getQuestionById(assessmentId, questionId, req.user);
+  return sendSuccess(res, result);
+});
+
+export const updateQuestionHandler = asyncHandler(async (req, res) => {
+  const { assessmentId, questionId } = parseWithSchema(assessmentQuestionParamsSchema, req.params);
+  const updates = parseWithSchema(updateQuestionBodySchema, req.body ?? {});
+  const question = await assessmentService.updateQuestion(
+    assessmentId,
+    questionId,
+    updates,
+    req.user,
+  );
+  return sendSuccess(res, { question });
+});
+
+export const deleteQuestionHandler = asyncHandler(async (req, res) => {
+  const { assessmentId, questionId } = parseWithSchema(assessmentQuestionParamsSchema, req.params);
+  const outcome = await assessmentService.deleteQuestion(assessmentId, questionId, req.user);
   return sendSuccess(res, outcome);
 });

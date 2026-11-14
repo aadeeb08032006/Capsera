@@ -24,7 +24,7 @@ All Member 3 backend code follows the team conventions established on `main`:
 | **Milestone 0** | Sync with `origin/main`, sign off `SCHEMA-M3-*` & `OPEN-005`, specify §6.4 in `API_CONTRACT.md` | **Done** (`feature/assessments`) |
 | **Milestone 1** | Zod validation schemas + course ownership / active enrollment guard helpers + unit tests | **Done** (`feature/assessments`) |
 | **Milestone 2** | Assessment CRUD & transactional publish (`>= 1` question check, lock when attempts exist) + tests | **Done** (`feature/assessments`) |
-| **Milestone 3** | MCQ question bank CRUD + strict trainee answer-key sanitization (`correctOption` / `explanation` stripped) + tests | Pending |
+| **Milestone 3** | MCQ question bank CRUD + strict trainee answer-key sanitization (`correctOption` / `explanation` stripped) + tests | **Done** (`feature/assessments`) |
 | **Milestone 4** | Attempt initiation (`POST /assessments/:assessmentId/attempts`), deadline/attempt-cap checks, stale expiry sweep + tests | Pending |
 | **Milestone 5** | Atomic auto-grading (`POST /attempts/:attemptId/submit`), scorecards (`GET /attempts/me`, `GET /attempts/:attemptId`), course results (`GET /courses/:courseId/results`), and completion rule check + tests | Pending |
 | **Milestone 6** | Course feedback upsert & privacy-safe summary (`POST`/`GET /courses/:courseId/feedback`) + tests | Pending |

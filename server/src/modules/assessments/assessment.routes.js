@@ -4,11 +4,16 @@ import { requireRole } from '../../middleware/requireRole.js';
 import { ROLES } from '../../shared/constants.js';
 import {
   createAssessmentHandler,
+  createQuestionHandler,
   deleteAssessmentHandler,
+  deleteQuestionHandler,
   getAssessmentHandler,
+  getQuestionHandler,
   listAssessmentsHandler,
+  listQuestionsHandler,
   publishAssessmentHandler,
   updateAssessmentHandler,
+  updateQuestionHandler,
 } from './assessment.controller.js';
 
 export const courseAssessmentRouter = Router({ mergeParams: true });
@@ -37,6 +42,25 @@ assessmentRouter.delete(
   '/:assessmentId',
   requireRole(ROLES.TRAINER, ROLES.ADMIN),
   deleteAssessmentHandler,
+);
+
+// ─── Question Bank Endpoints ───
+assessmentRouter.post(
+  '/:assessmentId/questions',
+  requireRole(ROLES.TRAINER, ROLES.ADMIN),
+  createQuestionHandler,
+);
+assessmentRouter.get('/:assessmentId/questions', listQuestionsHandler);
+assessmentRouter.get('/:assessmentId/questions/:questionId', getQuestionHandler);
+assessmentRouter.patch(
+  '/:assessmentId/questions/:questionId',
+  requireRole(ROLES.TRAINER, ROLES.ADMIN),
+  updateQuestionHandler,
+);
+assessmentRouter.delete(
+  '/:assessmentId/questions/:questionId',
+  requireRole(ROLES.TRAINER, ROLES.ADMIN),
+  deleteQuestionHandler,
 );
 
 export default assessmentRouter;
