@@ -549,9 +549,84 @@ Request:
 |---|---|---|
 | `GET /api/v1/certificates/me` | `TRAINEE` | **UNRESOLVED:** Certificate DTO fields & trigger timing (automatic on completion vs on-demand) |
 | `GET /api/v1/certificates/verify/:certificateCode` | Public | **UNRESOLVED:** Minimal public verification fields (privacy-preserving) |
-| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (all) | **UNRESOLVED:** Category enum values & pagination |
-| `POST /api/v1/announcements` | `ADMIN` | **UNRESOLVED:** Create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
-| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **UNRESOLVED:** Edit/publish/archive payload |
+| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (`scope=admin`) | **PROPOSED (Member 4):** Pending team approval on category enum, `scope=admin` filter, and pagination DTO |
+| `POST /api/v1/announcements` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
+| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on edit/publish/archive payload and terminal `ARCHIVED` transition |
 | `GET /api/v1/admin/dashboard/summary` | `ADMIN` | **UNRESOLVED:** Exact metric keys for users, courses, enrollments, attempts, certificates |
 | `GET /api/v1/admin/dashboard/assessment-performance` | `ADMIN` | **UNRESOLVED:** Pass rate / subject breakdown response structure |
+
+#### GET /api/v1/announcements (Public / `ADMIN`, PROPOSED)
+Returns paginated homepage announcements (`PRD` Section 6.10 & `FR-12`).
+
+> **PROPOSED (Member 4):** Pending team approval on query filters (`category`, `scope=admin`, `status`), response DTO, and pagination fields.
+
+Query parameters:
+- `category` (optional: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`)
+- `scope` (optional: `public` default | `admin` for `ACTIVE` `ADMIN` users only)
+- `status` (optional, allowed only when `scope=admin`: `DRAFT` | `PUBLISHED` | `ARCHIVED`)
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Visibility rules:
+- `scope=public`: returns only `status = 'PUBLISHED' AND published_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())`, ordered by `published_at DESC, id DESC`.
+- `scope=admin` (authenticated `ACTIVE` `ADMIN` only): returns all matching rows (`DRAFT`, `PUBLISHED`, `ARCHIVED`, including expired entries), ordered by `updated_at DESC, id DESC`.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "10",
+        "creatorId": "1",
+        "creatorName": "Platform Admin",
+        "title": "Spring Onboarding Open",
+        "body": "Enrollment for Q2 foundational modules is now open.",
+        "category": "ANNOUNCEMENT",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-14T08:00:00.000Z",
+        "expiresAt": null,
+        "createdAt": "2026-11-14T07:55:00.000Z",
+        "updatedAt": "2026-11-14T08:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED` (`scope=admin`/`status` without token or invalid token), 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/announcements (`ADMIN`, PROPOSED)
+Creates a new announcement as `DRAFT` (default) or immediately `PUBLISHED`. Creator ownership is derived from `req.user.id`.
+
+Request:
+```json
+{
+  "title": "Spring Onboarding Open",
+  "body": "Enrollment for Q2 foundational modules is now open.",
+  "category": "ANNOUNCEMENT",
+  "status": "DRAFT",
+  "expiresAt": "2026-12-01T00:00:00.000Z"
+}
+```
+- `category`: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`.
+- `status`: optional `DRAFT` (default) | `PUBLISHED` (sets `publishedAt` automatically on creation).
+- `expiresAt`: optional nullable ISO 8601 datetime with timezone (`expiresAt > publishedAt` required when published).
+- Unknown fields (such as `creatorId` or `publishedAt`) are rejected with `400 VALIDATION_ERROR`.
+
+Response `201`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PATCH /api/v1/announcements/:announcementId (`ADMIN`, PROPOSED)
+Updates announcement content (`title`, `body`, `category`, `expiresAt`), publishes (`DRAFT -> PUBLISHED`), or archives (`DRAFT -> ARCHIVED`, `PUBLISHED -> ARCHIVED`). `ARCHIVED` is terminal (cannot be edited or restored); `PUBLISHED -> DRAFT` is rejected with `409 CONFLICT`.
+
+Request: `{ "title"?, "body"?, "category"?, "status"?, "expiresAt"? }` (at least one field required).
+Response `200`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `ANNOUNCEMENT_NOT_FOUND`, 409 `CONFLICT`.
 
