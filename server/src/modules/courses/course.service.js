@@ -1,41 +1,18 @@
-import { executeQuery, withTransaction } from '../../config/db.js';
+import { withTransaction } from '../../config/db.js';
 import { AppError } from '../../shared/AppError.js';
 import { COURSE_STATUSES, ROLES, USER_STATUSES } from '../../shared/constants.js';
 import { COURSE_LEVELS } from './course.validation.js';
-
-const COURSE_COLUMNS = `
-  c.id,
-  c.trainer_id,
-  c.title,
-  c.summary,
-  c.description,
-  c.subject,
-  c.level,
-  c.thumbnail_url,
-  c.status,
-  c.published_at,
-  c.archived_at,
-  c.created_at,
-  c.updated_at
-`;
+import {
+  COURSE_COLUMNS,
+  assertCourseOwnership,
+  escapeLikePattern,
+  findCourseRowById,
+  isBlank,
+  runSql,
+  toIsoString,
+} from './course.helpers.js';
 
 const VALID_LEVELS = new Set(Object.values(COURSE_LEVELS));
-
-function toIsoString(value) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function isBlank(value) {
-  return typeof value !== 'string' || value.trim().length === 0;
-}
-
-function escapeLikePattern(value) {
-  return value.replace(/[\\%_]/g, '\\$&');
-}
 
 function mapCourseRow(row) {
   return {
@@ -57,41 +34,6 @@ function mapCourseRow(row) {
   };
 }
 
-/**
- * Execute parameterized SQL and ensure raw PostgreSQL errors never leak to callers.
- */
-async function runSql(sql, params = [], client = null) {
-  try {
-    if (client) {
-      return await client.query(sql, params);
-    }
-    return await executeQuery(sql, params);
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    if (error?.code === '22P02') {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid identifier or parameter format');
-    }
-    if (error?.code === '23505') {
-      throw new AppError(409, 'CONFLICT', 'Resource conflicts with an existing record');
-    }
-    if (error?.code === '23503' || error?.code === '23514') {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Request violates database constraints');
-    }
-    throw new AppError(500, 'INTERNAL_SERVER_ERROR', 'Database operation failed');
-  }
-}
-
-function assertCourseOwnership(courseRow, actor) {
-  if (actor.role === ROLES.ADMIN) {
-    return;
-  }
-  if (String(courseRow.trainer_id) !== String(actor.id)) {
-    throw new AppError(403, 'FORBIDDEN', 'You can only manage your own courses');
-  }
-}
-
 function getMissingPublishFields(courseFields) {
   const missing = [];
   if (isBlank(courseFields.title)) {
@@ -107,31 +49,6 @@ function getMissingPublishFields(courseFields) {
     missing.push('level');
   }
   return missing;
-}
-
-async function findCourseRowById(courseId, { includeMetadata = false, forUpdate = false, client = null } = {}) {
-  const selectExtras = includeMetadata
-    ? `,
-       u.full_name AS trainer_name,
-       (SELECT COUNT(*)::int FROM lessons l WHERE l.course_id = c.id) AS lesson_count`
-    : '';
-  const joinClause = includeMetadata ? 'JOIN users u ON u.id = c.trainer_id' : '';
-  const lockClause = forUpdate ? 'FOR UPDATE' : '';
-
-  const result = await runSql(
-    `SELECT ${COURSE_COLUMNS}${selectExtras}
-     FROM courses c
-     ${joinClause}
-     WHERE c.id = $1
-     ${lockClause}`,
-    [courseId],
-    client,
-  );
-
-  if (!result?.rows?.length) {
-    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
-  }
-  return result.rows[0];
 }
 
 async function resolveOwnerTrainerId(requestedTrainerId, actor) {
