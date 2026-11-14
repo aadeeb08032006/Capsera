@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
+import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -66,6 +67,8 @@ function FoundationHomePage() {
           )}
         </div>
       </section>
+
+      <AnnouncementsFeedSection />
     </main>
   );
 }

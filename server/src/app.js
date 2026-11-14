@@ -11,6 +11,7 @@ import courseRoutes from './modules/courses/course.routes.js';
 import { lessonRoutes } from './modules/courses/lesson.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
+import announcementRoutes from './modules/announcements/announcements.routes.js';
 
 const app = express();
 
@@ -78,6 +79,7 @@ apiRouter.use('/lessons', lessonRoutes);
 apiRouter.use('/skills', skillsRoutes);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);
+apiRouter.use('/announcements', announcementRoutes);
 app.use(env.apiPrefix, apiRouter);
 
 // Fallback & error handlers
