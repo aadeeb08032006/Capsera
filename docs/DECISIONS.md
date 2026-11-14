@@ -70,7 +70,7 @@ Do **not** edit [docs/PRD.md](./PRD.md) until all four members check off approva
 ### 5. Approval Checklist (Required by PRD Section 19)
 - [ ] Member 1 (Identity, Profiles, Governance)
 - [ ] Member 2 (Courses, Lessons, Resources, Enrollments)
-- [ ] Member 3 (Assessments, Attempts, Progress, Feedback)
+- [x] Member 3 (Assessments, Attempts, Progress, Feedback)
 - [ ] Member 4 (Competency, Certificates, Announcements, Admin Dashboard)
 
 ---
@@ -112,7 +112,7 @@ Because `docs/PRD.md` is the finalized v1.0 baseline, it has **not** been modifi
 ### 5. Approval Checklist (Required by PRD Section 19)
 - [ ] Member 1 (Identity, Profiles, Governance)
 - [ ] Member 2 (Courses, Lessons, Resources, Enrollments)
-- [ ] Member 3 (Assessments, Attempts, Progress, Feedback)
+- [x] Member 3 (Assessments, Attempts, Progress, Feedback)
 - [ ] Member 4 (Competency, Certificates, Announcements, Admin Dashboard)
 
 ---
@@ -178,6 +178,11 @@ Every column, constraint, or cross-module lifecycle rule not explicitly prescrib
   - Confirm `chk_assessment_attempts_submission_timestamps` (`submitted_at` required on `'SUBMITTED'`/`'GRADED'`, `NULL` on `'IN_PROGRESS'`/`'EXPIRED'`), `chk_assessment_attempts_graded_fields`, `idx_assessment_attempts_assessment_status_pass`, and transactional expiry sweep transitioning timed-out `'IN_PROGRESS'` rows to `'EXPIRED'` before creating a retry under `uq_assessment_attempts_one_in_progress`.
   - Confirm carrying `assessment_id BIGINT NOT NULL` on `attempt_answers` with dual composite FKs to `assessment_attempts (assessment_id, id)` and `questions (assessment_id, id)`, plus `feedback.comment VARCHAR(2000)` max length.
 
+#### Member 3 Responses (proposed)
+- **SCHEMA-M3-01:** Confirmed. Keep `pass_percentage`, `deadline_at`, `is_required`, and `published_at`. JSON API DTOs use `camelCase` (`passPercentage`, `deadlineAt`, `isRequired`, `publishedAt`, `durationMinutes`, `maxAttempts`) and string IDs (`BIGINT`). Publishing checks `COUNT(questions) >= 1` (`SUM(points) > 0`) inside a transaction; empty assessments return `409 ASSESSMENT_EMPTY`. Multiple required published assessments per course are allowed; course completion requires passing all published assessments with `is_required = TRUE` alongside 100% lesson completion. Once an assessment has recorded attempts, structural scoring changes (`passPercentage`, `maxAttempts`, `durationMinutes`, `isRequired`, and question edits/deletes affecting `correctOption` or `points`) are rejected with `409 ASSESSMENT_LOCKED`.
+- **SCHEMA-M3-02:** Confirmed. Keep `option_a`..`option_d`, `correct_option` (`'A'`..`'D'`), `question_order`, and non-deferrable `uq_questions_assessment_order`. JSON DTO uses `questionOrder`, `questionText`, `optionA`..`optionD`, `correctOption`, `explanation`, and `points`. Trainee pre-submit payloads omit `correctOption` and `explanation`.
+- **SCHEMA-M3-03:** Confirmed. Keep submission/grading timestamp checks, partial unique `IN_PROGRESS` index, transactional expiry sweep (`IN_PROGRESS` -> `EXPIRED` when timed out), dual composite FKs on `attempt_answers`, and `feedback.comment` max length `2000`.
+
 #### Member 4 Review Items (`002_*.sql` & `005_*.sql` — `skills`, `trainee_skills`, `trainer_skills`, `certificates`, `announcements`)
 - **`SCHEMA-M4-01` — Skill Expression Index (`LOWER(name)`), Proficiency Scale & Timestamps:**
   - Confirm `uq_skills_name_ci ON skills (LOWER(name))` (matching `WHERE LOWER(name) = LOWER($1)`), `CHECK (proficiency BETWEEN 1 AND 4)` (`1 = BEGINNER .. 4 = EXPERT`), `skills.category NOT NULL`, and whether `trainee_skills`/`trainer_skills` intentionally omit `created_at`/`updated_at`.
@@ -189,7 +194,7 @@ Every column, constraint, or cross-module lifecycle rule not explicitly prescrib
 ### 3. Approval Checklist (Required Before Applying Migrations to Shared DB)
 - [ ] Member 1 (Approves `001` & shared conventions)
 - [ ] Member 2 (Approves `003` & shared conventions)
-- [ ] Member 3 (Approves `004` & shared conventions)
+- [x] Member 3 (Approves `004` & shared conventions)
 - [ ] Member 4 (Approves `002`, `005` & shared conventions)
 
 ---
@@ -376,7 +381,7 @@ End of PRD — Version 1.0
 ### 3. Approval Checklist (Required Before Updating `docs/PRD.md`)
 - [ ] Member 1 (Identity, Profiles, Governance)
 - [ ] Member 2 (Courses, Lessons, Resources, Enrollments)
-- [ ] Member 3 (Assessments, Attempts, Progress, Feedback)
+- [x] Member 3 (Assessments, Attempts, Progress, Feedback)
 - [ ] Member 4 (Competency, Certificates, Announcements, Admin Dashboard)
 
 ---
@@ -411,6 +416,7 @@ End of PRD — Version 1.0
 ### OPEN-003: Request Validation Strategy
 - **PRD Reference:** Section 9.1 (*"Validation: use one agreed schema validation library or shared validation helpers."*)
 - **Action Required:** Team to agree on either a lightweight schema library (e.g., `zod`, `joi`, `express-validator`) or shared validation helper functions in `server/src/shared/`.
+- **Member 3 Alignment (PROPOSED):** Aligns with `zod` (`^4.6.7`, already installed in `server/package.json` and used in `server/src/modules/courses/course.validation.js`).
 
 ### OPEN-004: Certificate Status Representation (Proposed under `ADR-004` / `SCHEMA-M4-02`)
 - **PRD Reference:** Section 10.3 (*"Certificate statuses should be represented by `issued_at` and nullable `revoked_at`, or by one explicitly standardized status field. Do not mix both models without a decision record."*)
@@ -421,10 +427,12 @@ End of PRD — Version 1.0
   - Section 6.3: *"Duplicate enrollment is rejected or returns the existing enrollment consistently; the implementation must choose one behaviour and test it."*
   - Section 6.5: *"Submission must be idempotent or reject a second submission consistently."*
 - **Action Required:** Member 2 (enrollment) and Member 3 (assessment submission) to record the chosen HTTP status (`409` vs `200`) in `docs/API_CONTRACT.md`.
+- **Member 3 Proposal (PROPOSED):** Reject duplicate or late submissions on an attempt whose status is no longer `IN_PROGRESS` (`SUBMITTED`, `GRADED`, or `EXPIRED`) with `409 Conflict` (`ATTEMPT_ALREADY_SUBMITTED` or `ATTEMPT_EXPIRED`) inside the `SELECT ... FOR UPDATE` transaction.
 
 ### OPEN-006: Testing Libraries
 - **PRD Reference:** Section 9.1 (*"Testing: API integration tests plus frontend critical-flow tests; exact test libraries are a team decision recorded before implementation."*)
 - **Action Required:** Team to select backend test runner (e.g., Node built-in `node:test` or `vitest`/`jest` + `supertest`) and frontend test runner (e.g., `vitest` + React Testing Library).
+- **Member 3 Alignment (PROPOSED):** Uses `vitest` + `supertest` on the backend (already installed and configured in `server/package.json` and `server/tests/`).
 
 ### OPEN-007: Enrollment Cancellation & Re-Enrollment Policy (`enrollments`)
 - **PRD Reference:** Section 6.3 (*"Enrollment records preserve history and cannot be silently overwritten"*), Section 10.3 (`ACTIVE`, `COMPLETED`, `CANCELLED`), Section 12 (`UNIQUE (trainee_id, course_id)`).

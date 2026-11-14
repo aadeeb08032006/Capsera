@@ -10,7 +10,8 @@
     "start": "node src/index.js",
     "check": "node --check src/index.js && node --check src/app.js && node --check src/config/db.js",
     "seed:admin": "node scripts/seed-admin.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "RUN_PG_INTEGRATION=true DB_NAME=capsera_cp03_test vitest run tests/skills.integration.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -20,6 +21,7 @@
     "express-rate-limit": "^8.7.4",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
     "pg": "^8.13.0",
     "zod": "^4.6.7"
   },
