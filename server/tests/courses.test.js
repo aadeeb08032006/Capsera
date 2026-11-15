@@ -409,6 +409,134 @@ describe('Courses API (/api/v1/courses)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.course.title).toBe('Revised Title');
     });
+
+    it('allows owner trainer to archive a course via PATCH (200)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+            archived_at: new Date('2026-11-11T12:00:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'ARCHIVED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.status).toBe('ARCHIVED');
+      expect(res.body.data.course.archivedAt).toBeTruthy();
+    });
+
+    it('allows ADMIN to unpublish a PUBLISHED course back to DRAFT via PATCH (200)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'DRAFT',
+            published_at: null,
+            archived_at: null,
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.status).toBe('DRAFT');
+      expect(res.body.data.course.publishedAt).toBeNull();
+      expect(res.body.data.course.archivedAt).toBeNull();
+    });
+
+    it('prevents non-admin trainer from unpublishing to DRAFT (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('rejects unpublishing an ARCHIVED course back to DRAFT (409 INVALID_STATUS_TRANSITION)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            archived_at: new Date('2026-11-11T11:00:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    });
+
+    it('rejects publishing via PATCH (400 VALIDATION_ERROR)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeCourseRow({ id: '5', trainer_id: '10', status: 'DRAFT' })],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'PUBLISHED' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
   });
 
   describe('POST /api/v1/courses/:courseId/publish & /archive & DELETE', () => {

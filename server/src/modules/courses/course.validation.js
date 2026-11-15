@@ -81,6 +81,9 @@ export const updateCourseBodySchema = z
       .nullable()
       .optional(),
     thumbnailUrl: optionalNullableUrlSchema,
+    status: z
+      .enum([COURSE_STATUSES.DRAFT, COURSE_STATUSES.PUBLISHED, COURSE_STATUSES.ARCHIVED])
+      .optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one updatable field must be provided',

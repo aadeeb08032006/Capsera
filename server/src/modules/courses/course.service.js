@@ -212,14 +212,50 @@ export async function getCourseById(courseId, actor) {
 }
 
 /**
- * Update editable metadata of a DRAFT or PUBLISHED course.
+ * Update editable metadata of a DRAFT or PUBLISHED course, or archive/unpublish.
  */
 export async function updateCourse(courseId, updates, actor) {
   const existing = await findCourseRowById(courseId);
   assertCourseOwnership(existing, actor);
 
+  if (updates.status === COURSE_STATUSES.PUBLISHED) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'Courses cannot be published via PATCH. Use POST /api/v1/courses/:courseId/publish',
+    );
+  }
+
   if (existing.status === COURSE_STATUSES.ARCHIVED) {
+    if (updates.status === COURSE_STATUSES.ARCHIVED) {
+      return mapCourseRow(existing);
+    }
     throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Archived courses cannot be edited');
+  }
+
+  let targetStatus = existing.status;
+  let targetPublishedAt = existing.published_at;
+  let targetArchivedAt = existing.archived_at;
+
+  if (updates.status !== undefined) {
+    if (updates.status === COURSE_STATUSES.ARCHIVED) {
+      targetStatus = COURSE_STATUSES.ARCHIVED;
+      targetArchivedAt = new Date().toISOString();
+    } else if (updates.status === COURSE_STATUSES.DRAFT) {
+      if (actor.role !== ROLES.ADMIN) {
+        throw new AppError(403, 'FORBIDDEN', 'Only admins can unpublish a course back to draft');
+      }
+      if (existing.status !== COURSE_STATUSES.PUBLISHED) {
+        throw new AppError(
+          409,
+          'INVALID_STATUS_TRANSITION',
+          'Only published courses can be unpublished to draft',
+        );
+      }
+      targetStatus = COURSE_STATUSES.DRAFT;
+      targetPublishedAt = null;
+      targetArchivedAt = null;
+    }
   }
 
   const merged = {
@@ -231,7 +267,7 @@ export async function updateCourse(courseId, updates, actor) {
     thumbnailUrl: updates.thumbnailUrl !== undefined ? updates.thumbnailUrl : existing.thumbnail_url,
   };
 
-  if (existing.status === COURSE_STATUSES.PUBLISHED) {
+  if (targetStatus === COURSE_STATUSES.PUBLISHED) {
     const missing = getMissingPublishFields(merged);
     if (missing.length > 0) {
       throw new AppError(
@@ -250,8 +286,11 @@ export async function updateCourse(courseId, updates, actor) {
          subject = $4,
          level = $5,
          thumbnail_url = $6,
+         status = $7,
+         published_at = $8,
+         archived_at = $9,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $7
+     WHERE id = $10
      RETURNING id, trainer_id, title, summary, description, subject, level, thumbnail_url, status, published_at, archived_at, created_at, updated_at`,
     [
       merged.title,
@@ -260,6 +299,9 @@ export async function updateCourse(courseId, updates, actor) {
       merged.subject ?? null,
       merged.level ?? null,
       merged.thumbnailUrl ?? null,
+      targetStatus,
+      targetPublishedAt,
+      targetArchivedAt,
       courseId,
     ],
   );
