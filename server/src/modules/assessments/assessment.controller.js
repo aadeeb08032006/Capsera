@@ -5,10 +5,13 @@ import {
   assessmentQuestionParamsSchema,
   attemptIdParamSchema,
   courseIdParamSchema,
+  courseResultsQuerySchema,
   createAssessmentBodySchema,
   createQuestionBodySchema,
   listAssessmentsQuerySchema,
+  listMyAttemptsQuerySchema,
   parseWithSchema,
+  submitAttemptBodySchema,
   updateAssessmentBodySchema,
   updateQuestionBodySchema,
 } from './assessment.validation.js';
@@ -100,4 +103,24 @@ export const getAttemptHandler = asyncHandler(async (req, res) => {
   const { attemptId } = parseWithSchema(attemptIdParamSchema, req.params);
   const result = await assessmentService.getAttemptById(attemptId, req.user);
   return sendSuccess(res, result);
+});
+
+export const submitAttemptHandler = asyncHandler(async (req, res) => {
+  const { attemptId } = parseWithSchema(attemptIdParamSchema, req.params);
+  const payload = parseWithSchema(submitAttemptBodySchema, req.body ?? {});
+  const result = await assessmentService.submitAttempt(attemptId, payload, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const listMyAttemptsHandler = asyncHandler(async (req, res) => {
+  const query = parseWithSchema(listMyAttemptsQuerySchema, req.query ?? {});
+  const result = await assessmentService.listMyAttempts(query, req.user);
+  return sendPaginated(res, result);
+});
+
+export const getCourseResultsHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const query = parseWithSchema(courseResultsQuerySchema, req.query ?? {});
+  const result = await assessmentService.getCourseResults(courseId, query, req.user);
+  return sendSuccess(res, result, 200);
 });

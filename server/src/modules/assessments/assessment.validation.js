@@ -205,7 +205,8 @@ export const submitAttemptBodySchema = z.strictObject({
           .enum(MCQ_OPTIONS, {
             error: 'selectedOption must be one of A, B, C, D, or null',
           })
-          .nullable(),
+          .nullable()
+          .optional(),
       }),
       { error: 'answers must be an array' },
     )

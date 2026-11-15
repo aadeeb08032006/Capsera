@@ -1364,4 +1364,553 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
       expect(res.body.error.code).toBe('ATTEMPT_NOT_FOUND');
     });
   });
+
+  // ─── Milestone 5: Submission, Auto-Grading, Scorecards & Results ───
+
+  describe('POST /api/v1/attempts/:attemptId/submit (Auto-Grading & Results Engine)', () => {
+    it('successfully grades attempt, calculates points/percentage, stores answers, and returns full scorecard', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // 1. Lock attempt row
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              assessment_id: '1',
+              trainee_id: '20',
+              status: 'IN_PROGRESS',
+              pass_percentage: '60.00',
+              started_at: new Date(Date.now() - 5 * 60 * 1000),
+              duration_minutes: 30,
+            }),
+          ],
+        });
+        // 2. Fetch questions
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeQuestionRow({ id: '101', question_order: 1, correct_option: 'A', points: 2 }),
+            makeQuestionRow({ id: '102', question_order: 2, correct_option: 'C', points: 3 }),
+          ],
+        });
+        // 3. Insert answer 1 (correct: A)
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            {
+              id: '1001',
+              attempt_id: '501',
+              assessment_id: '1',
+              question_id: '101',
+              selected_option: 'A',
+              is_correct: true,
+              points_awarded: 2,
+            },
+          ],
+        });
+        // 4. Insert answer 2 (incorrect: B instead of C)
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            {
+              id: '1002',
+              attempt_id: '501',
+              assessment_id: '1',
+              question_id: '102',
+              selected_option: 'B',
+              is_correct: false,
+              points_awarded: 0,
+            },
+          ],
+        });
+        // 5. Update attempt to GRADED (earned: 2, total: 5, score: 40%, is_passed: false)
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'GRADED',
+              earned_points: 2,
+              total_points: 5,
+              score_percentage: 40,
+              is_passed: false,
+              submitted_at: new Date(),
+              graded_at: new Date(),
+            }),
+          ],
+        });
+
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          answers: [
+            { questionId: '101', selectedOption: 'A' },
+            { questionId: '102', selectedOption: 'B' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.attempt.status).toBe('GRADED');
+      expect(res.body.data.attempt.earnedPoints).toBe(2);
+      expect(res.body.data.attempt.totalPoints).toBe(5);
+      expect(res.body.data.attempt.scorePercentage).toBe(40);
+      expect(res.body.data.attempt.isPassed).toBe(false);
+      expect(res.body.data.answers).toHaveLength(2);
+      expect(res.body.data.answers[0].isCorrect).toBe(true);
+      expect(res.body.data.answers[0].correctOption).toBe('A');
+      expect(res.body.data.answers[1].isCorrect).toBe(false);
+      expect(res.body.data.answers[1].correctOption).toBe('C');
+    });
+
+    it('triggers course completion when a passing score completes all course requirements', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // 1. Lock attempt row
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              assessment_id: '1',
+              trainee_id: '20',
+              course_id: '100',
+              status: 'IN_PROGRESS',
+              pass_percentage: '60.00',
+              started_at: new Date(),
+              duration_minutes: 30,
+            }),
+          ],
+        });
+        // 2. Fetch questions
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeQuestionRow({ id: '101', correct_option: 'A', points: 10 }),
+          ],
+        });
+        // 3. Insert answer
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '1001', attempt_id: '501', assessment_id: '1', question_id: '101', selected_option: 'A', is_correct: true, points_awarded: 10 }],
+        });
+        // 4. Update attempt to GRADED (100% pass)
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'GRADED',
+              earned_points: 10,
+              total_points: 10,
+              score_percentage: 100,
+              is_passed: true,
+              submitted_at: new Date(),
+              graded_at: new Date(),
+            }),
+          ],
+        });
+        // 5. checkAndTriggerCourseCompletion: find active enrollment
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '900', status: 'ACTIVE' }],
+        });
+        // 6. count lessons
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ total: 2 }],
+        });
+        // 7. count completed lessons
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ completed: 2 }],
+        });
+        // 8. fetch required assessments
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '1' }],
+        });
+        // 9. count passed required assessments
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ passed_count: 1 }],
+        });
+        // 10. update enrollment to COMPLETED
+        mockClient.query.mockResolvedValueOnce({
+          rowCount: 1,
+        });
+
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          answers: [{ questionId: '101', selectedOption: 'A' }],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.attempt.isPassed).toBe(true);
+    });
+
+    it('rejects duplicate submission on already GRADED attempt (409 ATTEMPT_ALREADY_SUBMITTED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'GRADED',
+            }),
+          ],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ answers: [] });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ATTEMPT_ALREADY_SUBMITTED');
+    });
+
+    it('rejects submission on already EXPIRED attempt (409 ATTEMPT_EXPIRED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'EXPIRED',
+            }),
+          ],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ answers: [] });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ATTEMPT_EXPIRED');
+    });
+
+    it('rejects submission if attempt timer exceeded duration + 30s grace buffer (409 ATTEMPT_EXPIRED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'IN_PROGRESS',
+              started_at: new Date(Date.now() - 35 * 60 * 1000),
+              duration_minutes: 30,
+            }),
+          ],
+        });
+        // update attempt to EXPIRED
+        mockClient.query.mockResolvedValueOnce({ rowCount: 1 });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ answers: [] });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ATTEMPT_EXPIRED');
+    });
+
+    it('rejects submission when questionId does not belong to assessment (400 VALIDATION_ERROR)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'IN_PROGRESS',
+              started_at: new Date(),
+              duration_minutes: 30,
+            }),
+          ],
+        });
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeQuestionRow({ id: '101' })],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          answers: [{ questionId: '999', selectedOption: 'A' }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('forbids trainee from submitting another user attempt (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '99', role: 'TRAINEE' });
+
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'IN_PROGRESS',
+            }),
+          ],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('99')}`)
+        .send({ answers: [] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('forbids non-trainee from calling submit endpoint (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ answers: [] });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('GET /api/v1/attempts/me (Trainee Attempt History)', () => {
+    it('returns paginated attempt list for authenticated trainee', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({ rows: [{ total: 2 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAttemptRow({ id: '502', status: 'GRADED', earned_points: 8, total_points: 10, score_percentage: 80, is_passed: true }),
+          makeAttemptRow({ id: '501', status: 'EXPIRED' }),
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/me')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.items).toHaveLength(2);
+      expect(res.body.data.pagination).toMatchObject({
+        page: 1,
+        pageSize: 20,
+        totalItems: 2,
+        totalPages: 1,
+      });
+    });
+
+    it('filters trainee attempt history by courseId and assessmentId', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', course_id: '100', assessment_id: '1' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/me?courseId=100&assessmentId=1')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.items).toHaveLength(1);
+    });
+
+    it('forbids non-trainee from accessing /attempts/me (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/me')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('GET /api/v1/attempts/:attemptId (Scorecard for Graded Attempt)', () => {
+    it('returns attempt details and graded answers review for GRADED attempt', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAttemptRow({
+            id: '501',
+            trainee_id: '20',
+            status: 'GRADED',
+            earned_points: 2,
+            total_points: 2,
+            score_percentage: 100,
+            is_passed: true,
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: '1001',
+            attempt_id: '501',
+            question_id: '101',
+            selected_option: 'A',
+            is_correct: true,
+            points_awarded: 2,
+            question_text: 'What causes geostrophic wind?',
+            option_a: 'Balance between Coriolis force and pressure gradient force',
+            option_b: 'Frictional drag only',
+            option_c: 'Centrifugal acceleration only',
+            option_d: 'Thermal convection only',
+            correct_option: 'A',
+            explanation: 'Geostrophic balance explanation',
+            points: 2,
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/501')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.attempt.status).toBe('GRADED');
+      expect(res.body.data.answers).toHaveLength(1);
+      expect(res.body.data.answers[0].correctOption).toBe('A');
+      expect(res.body.data.answers[0].isCorrect).toBe(true);
+    });
+  });
+
+  describe('GET /api/v1/courses/:courseId/results (Trainer Course Results & Analytics)', () => {
+    it('returns aggregate summary and paginated student attempts for course owner trainer', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Atmospheric Physics' }],
+      });
+      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            total_attempts: 10,
+            graded_attempts: 8,
+            passed_attempts: 6,
+            average_score: '75.00',
+          },
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({ rows: [{ total: 10 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAttemptRow({
+            id: '501',
+            assessment_id: '1',
+            course_id: '100',
+            trainee_id: '20',
+            trainee_name: 'Alice',
+            status: 'GRADED',
+            score_percentage: 80,
+            is_passed: true,
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/results')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.summary).toMatchObject({
+        courseId: '100',
+        totalAssessments: 2,
+        totalAttempts: 10,
+        gradedAttempts: 8,
+        passedAttempts: 6,
+        passRate: 75,
+        averageScorePercentage: 75,
+      });
+      expect(res.body.data.items).toHaveLength(1);
+      expect(res.body.data.pagination).toMatchObject({
+        page: 1,
+        pageSize: 20,
+        totalItems: 10,
+        totalPages: 1,
+      });
+    });
+
+    it('allows ADMIN to view course results for any course', async () => {
+      mockAuthUser({ id: '999', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Atmospheric Physics' }],
+      });
+      executeQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ total_attempts: 1, graded_attempts: 1, passed_attempts: 1, average_score: '90.00' }],
+      });
+      executeQuery.mockResolvedValueOnce({ rows: [{ total: 1 }] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', status: 'GRADED' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/results')
+        .set('Authorization', `Bearer ${makeToken('999')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('forbids trainer from viewing results for another trainer course (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '99', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Atmospheric Physics' }],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/results')
+        .set('Authorization', `Bearer ${makeToken('99')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('returns 404 COURSE_NOT_FOUND if course does not exist', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/courses/999/results')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('COURSE_NOT_FOUND');
+    });
+  });
 });

@@ -13,6 +13,7 @@ import {
   assessmentRouter,
   attemptRouter,
   courseAssessmentRouter,
+  courseResultsRouter,
 } from './modules/assessments/assessment.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
@@ -80,6 +81,7 @@ apiRouter.get('/health', async (req, res, next) => {
 
 // Mount /api/v1 prefix (Feature module routers will be registered here by Members 1–4)
 apiRouter.use('/courses/:courseId/assessments', courseAssessmentRouter);
+apiRouter.use('/courses/:courseId/results', courseResultsRouter);
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/lessons', lessonRoutes);
 apiRouter.use('/assessments', assessmentRouter);
