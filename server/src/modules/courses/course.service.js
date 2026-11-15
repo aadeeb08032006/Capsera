@@ -7,6 +7,7 @@ import {
   assertCourseOwnership,
   escapeLikePattern,
   findCourseRowById,
+  findEntitledEnrollment,
   isBlank,
   runSql,
   toIsoString,
@@ -196,19 +197,67 @@ export async function listCourses(filters, actor) {
 
 /**
  * Fetch course detail respecting visibility for DRAFT and ARCHIVED courses.
+ * Returns ordered lessons list only for the owner, Admin, or an enrolled trainee.
+ * Other trainees get course info only, without lesson content.
  */
 export async function getCourseById(courseId, actor) {
   const row = await findCourseRowById(courseId, { includeMetadata: true });
 
-  if (
-    row.status !== COURSE_STATUSES.PUBLISHED &&
-    actor.role !== ROLES.ADMIN &&
-    String(row.trainer_id) !== String(actor.id)
-  ) {
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course');
+  const isOwnerOrAdmin =
+    actor.role === ROLES.ADMIN || String(row.trainer_id) === String(actor.id);
+
+  let enrolledTrainee = false;
+  if (!isOwnerOrAdmin && actor.role === ROLES.TRAINEE) {
+    const enrollment = await findEntitledEnrollment(row.id, actor.id);
+    enrolledTrainee = Boolean(enrollment);
   }
 
-  return mapCourseRow(row);
+  if (!isOwnerOrAdmin) {
+    if (row.status === COURSE_STATUSES.PUBLISHED) {
+      // Published courses can be viewed by anyone authenticated
+    } else if (row.status === COURSE_STATUSES.ARCHIVED && enrolledTrainee) {
+      // Existing enrollments stay untouched: enrolled trainees can still view archived course
+    } else {
+      throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course');
+    }
+  }
+
+  const course = mapCourseRow(row);
+
+  if (isOwnerOrAdmin || enrolledTrainee) {
+    const lessonsResult = await runSql(
+      `SELECT id,
+              course_id,
+              title,
+              content,
+              lesson_order,
+              estimated_duration_minutes,
+              created_at,
+              updated_at
+       FROM lessons
+       WHERE course_id = $1
+       ORDER BY lesson_order ASC, id ASC`,
+      [courseId],
+    );
+
+    const lessonRows = lessonsResult?.rows ?? [];
+    course.lessons = lessonRows.map((lessonRow) => ({
+      id: String(lessonRow.id),
+      courseId: String(lessonRow.course_id),
+      title: lessonRow.title,
+      content: lessonRow.content ?? null,
+      position: Number(lessonRow.lesson_order),
+      estimatedDurationMinutes:
+        lessonRow.estimated_duration_minutes !== null &&
+        lessonRow.estimated_duration_minutes !== undefined
+          ? Number(lessonRow.estimated_duration_minutes)
+          : null,
+      createdAt: toIsoString(lessonRow.created_at),
+      updatedAt: toIsoString(lessonRow.updated_at),
+    }));
+  }
+
+  return course;
 }
 
 /**
