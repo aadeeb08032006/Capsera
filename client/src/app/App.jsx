@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
+import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -68,6 +70,50 @@ function FoundationHomePage() {
         </div>
       </section>
 
+      <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
+        <h2>Member 3: Assessments & Evaluations Portal</h2>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
+          Interactive interfaces for instructors to author MCQ assessments and analyze student evaluations.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <Link
+            to="/courses/1/assessments/manage"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ✏️ Trainer Quiz Builder
+          </Link>
+          <Link
+            to="/courses/1/assessments/results"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f1f5f9',
+              color: '#334155',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #cbd5e1',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            📊 Course Results & Analytics
+          </Link>
+        </div>
+      </section>
+
       <AnnouncementsFeedSection />
     </main>
   );
@@ -77,6 +123,10 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<FoundationHomePage />} />
+      <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
+      <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
+      <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
+      <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
     </Routes>
   );
 }
