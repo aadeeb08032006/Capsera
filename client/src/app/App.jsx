@@ -5,6 +5,8 @@ import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFee
 import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
 import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
 import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
+import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
+import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -116,6 +118,41 @@ function FoundationHomePage() {
           >
             📊 Course Results & Analytics
           </Link>
+          <Link
+            to="/courses/1/assessments/1/player"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            🚀 Trainee Quiz Player
+          </Link>
+          <Link
+            to="/courses/1/feedback"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f8fafc',
+              color: '#d97706',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #fde68a',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ⭐ Course Feedback & Ratings
+          </Link>
         </div>
       </section>
 
@@ -134,6 +171,10 @@ export default function App() {
       <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
       <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
       <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
+      <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
+      <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
+      <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
+      <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
     </Routes>
   );
 }
