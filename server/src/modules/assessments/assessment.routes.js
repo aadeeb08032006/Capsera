@@ -9,6 +9,7 @@ import {
   deleteQuestionHandler,
   getAssessmentHandler,
   getAttemptHandler,
+  getCourseFeedbackHandler,
   getCourseResultsHandler,
   getQuestionHandler,
   listAssessmentsHandler,
@@ -19,6 +20,7 @@ import {
   submitAttemptHandler,
   updateAssessmentHandler,
   updateQuestionHandler,
+  upsertCourseFeedbackHandler,
 } from './assessment.controller.js';
 
 export const courseAssessmentRouter = Router({ mergeParams: true });
@@ -92,5 +94,14 @@ courseResultsRouter.get(
   requireRole(ROLES.TRAINER, ROLES.ADMIN),
   getCourseResultsHandler,
 );
+
+export const courseFeedbackRouter = Router({ mergeParams: true });
+courseFeedbackRouter.use(authenticate);
+courseFeedbackRouter.post(
+  '/',
+  requireRole(ROLES.TRAINEE),
+  upsertCourseFeedbackHandler,
+);
+courseFeedbackRouter.get('/', getCourseFeedbackHandler);
 
 export default assessmentRouter;

@@ -1500,3 +1500,144 @@ export async function getCourseResults(courseId, query, actor) {
     },
   };
 }
+
+/**
+ * Format a feedback database row into a canonical camelCase DTO.
+ */
+export function mapFeedbackRow(row) {
+  return {
+    id: String(row.id),
+    courseId: String(row.course_id),
+    rating: Number(row.rating),
+    comment: row.comment ?? null,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+/**
+ * Upsert a trainee review/feedback for an enrolled course.
+ * Uses PostgreSQL INSERT ... ON CONFLICT (trainee_id, course_id) DO UPDATE.
+ */
+export async function upsertCourseFeedback(courseId, payload, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only trainees can submit course feedback');
+  }
+
+  await verifyCourseEnrollment(courseId, actor.id, {
+    requirePublishedCourse: true,
+    allowedStatuses: [ENROLLMENT_STATUSES.ACTIVE, ENROLLMENT_STATUSES.COMPLETED],
+  });
+
+  const upsertSql = `
+    INSERT INTO feedback (
+      trainee_id,
+      course_id,
+      rating,
+      comment,
+      created_at,
+      updated_at
+    ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT (trainee_id, course_id) DO UPDATE
+    SET
+      rating = EXCLUDED.rating,
+      comment = EXCLUDED.comment,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING *
+  `;
+
+  const result = await runSql(upsertSql, [
+    String(actor.id),
+    String(courseId),
+    payload.rating,
+    payload.comment ?? null,
+  ]);
+
+  return {
+    feedback: mapFeedbackRow(result.rows[0]),
+  };
+}
+
+/**
+ * Get aggregate rating statistics and paginated public reviews for a course.
+ * Preserves student privacy: never returns emails, IDs, or sensitive account fields.
+ */
+export async function getCourseFeedback(courseId, query, actor) {
+  const courseRes = await runSql(
+    'SELECT id, trainer_id, status FROM courses WHERE id = $1',
+    [String(courseId)],
+  );
+  if (!courseRes.rows.length) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
+  }
+  const course = courseRes.rows[0];
+
+  if (course.status !== COURSE_STATUSES.PUBLISHED) {
+    if (actor.role !== ROLES.ADMIN && String(course.trainer_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'Cannot view feedback for an unpublished course');
+    }
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  // 1. Aggregate statistics
+  const summaryRes = await runSql(
+    `SELECT
+       COUNT(*)::int AS total_ratings,
+       COALESCE(AVG(rating), 0)::numeric(3,2) AS average_rating
+     FROM feedback
+     WHERE course_id = $1`,
+    [String(courseId)],
+  );
+
+  const totalRatings = Number(summaryRes.rows[0]?.total_ratings || 0);
+  const averageRating = Number(Number(summaryRes.rows[0]?.average_rating || 0).toFixed(2));
+
+  // 2. Paginated review items (privacy safe: only reviewer_name)
+  const listSql = `
+    SELECT
+      f.id,
+      f.course_id,
+      f.rating,
+      f.comment,
+      f.created_at,
+      f.updated_at,
+      u.full_name AS reviewer_name
+    FROM feedback f
+    JOIN users u ON u.id = f.trainee_id
+    WHERE f.course_id = $1
+    ORDER BY f.created_at DESC, f.id DESC
+    LIMIT $2 OFFSET $3
+  `;
+
+  const listRes = await runSql(listSql, [String(courseId), pageSize, offset]);
+
+  const items = listRes.rows.map((row) => ({
+    id: String(row.id),
+    courseId: String(row.course_id),
+    rating: Number(row.rating),
+    comment: row.comment ?? null,
+    reviewerName: row.reviewer_name,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  }));
+
+  const totalPages = totalRatings === 0 ? 0 : Math.ceil(totalRatings / pageSize);
+
+  return {
+    summary: {
+      courseId: String(courseId),
+      averageRating,
+      totalRatings,
+    },
+    items,
+    pagination: {
+      page,
+      pageSize,
+      totalItems: totalRatings,
+      totalPages,
+    },
+  };
+}

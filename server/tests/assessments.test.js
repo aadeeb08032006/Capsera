@@ -105,6 +105,21 @@ function makeAttemptRow(overrides = {}) {
   };
 }
 
+function makeFeedbackRow(overrides = {}) {
+  const now = new Date('2026-11-15T12:00:00.000Z');
+  return {
+    id: '1',
+    trainee_id: '20',
+    course_id: '100',
+    rating: 5,
+    comment: 'Great course on Doppler radar principles!',
+    created_at: now,
+    updated_at: now,
+    reviewer_name: 'Alice Trainee',
+    ...overrides,
+  };
+}
+
 describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/assessments)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1908,6 +1923,246 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
       const res = await request(app)
         .get('/api/v1/courses/999/results')
         .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('COURSE_NOT_FOUND');
+    });
+  });
+
+  // ─── Milestone 6: Course Feedback & Reviews ───
+
+  describe('POST /api/v1/courses/:courseId/feedback (Course Feedback Upsert)', () => {
+    it('successfully creates feedback for an active enrolled trainee (200 OK)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Radar Meteorology', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // upsert feedback query
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeFeedbackRow({ rating: 5, comment: 'Excellent explanations.' })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          rating: 5,
+          comment: 'Excellent explanations.',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.feedback).toMatchObject({
+        id: '1',
+        courseId: '100',
+        rating: 5,
+        comment: 'Excellent explanations.',
+      });
+    });
+
+    it('allows completed enrollment to submit course feedback', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Radar Meteorology', status: 'PUBLISHED' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'COMPLETED' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeFeedbackRow({ rating: 4, comment: 'Helpful content!' })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ rating: 4, comment: 'Helpful content!' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.feedback.rating).toBe(4);
+    });
+
+    it('upserts feedback when trainee updates their previous review', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Radar Meteorology', status: 'PUBLISHED' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // updated feedback row
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeFeedbackRow({ rating: 5, comment: 'Updated review: even better after lab 2.' })],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ rating: 5, comment: 'Updated review: even better after lab 2.' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.feedback.comment).toBe('Updated review: even better after lab 2.');
+    });
+
+    it('forbids non-trainee users from submitting feedback (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ rating: 5 });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('rejects un-enrolled trainee with 403 NOT_ENROLLED', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Radar Meteorology', status: 'PUBLISHED' }],
+      });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ rating: 5 });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('NOT_ENROLLED');
+    });
+
+    it('rejects feedback for an unpublished course (409 COURSE_NOT_PUBLISHED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Radar Meteorology', status: 'DRAFT' }],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ rating: 5 });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('COURSE_NOT_PUBLISHED');
+    });
+
+    it('rejects invalid rating values (e.g. 0 or 6) with 400 VALIDATION_ERROR', async () => {
+      for (const badRating of [0, 6, -1, 3.5]) {
+        mockAuthUser({ id: '20', role: 'TRAINEE' });
+        const res = await request(app)
+          .post('/api/v1/courses/100/feedback')
+          .set('Authorization', `Bearer ${makeToken('20')}`)
+          .send({ rating: badRating });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
+    });
+
+    it('rejects comment exceeding 2000 characters with 400 VALIDATION_ERROR', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      const res = await request(app)
+        .post('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ rating: 5, comment: 'a'.repeat(2001) });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('GET /api/v1/courses/:courseId/feedback (Privacy-Safe Course Reviews & Summary)', () => {
+    it('returns aggregate summary and paginated reviews without exposing private user emails or IDs', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // course lookup
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', status: 'PUBLISHED' }],
+      });
+      // summary stats
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ total_ratings: 2, average_rating: '4.50' }],
+      });
+      // paginated reviews list
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeFeedbackRow({ id: '1', rating: 5, comment: 'Outstanding!', reviewer_name: 'Bob Smith' }),
+          makeFeedbackRow({ id: '2', rating: 4, comment: 'Very practical', reviewer_name: 'Carol Danvers' }),
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.summary).toMatchObject({
+        courseId: '100',
+        averageRating: 4.5,
+        totalRatings: 2,
+      });
+      expect(res.body.data.items).toHaveLength(2);
+      expect(res.body.data.items[0]).toEqual({
+        id: '1',
+        courseId: '100',
+        rating: 5,
+        comment: 'Outstanding!',
+        reviewerName: 'Bob Smith',
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      });
+      // Privacy verification: no email or private traineeId exposed in public reviews!
+      expect(res.body.data.items[0].email).toBeUndefined();
+      expect(res.body.data.items[0].traineeId).toBeUndefined();
+    });
+
+    it('allows course owner trainer to view feedback for their course', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', status: 'PUBLISHED' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ total_ratings: 1, average_rating: '5.00' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeFeedbackRow()],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.items).toHaveLength(1);
+    });
+
+    it('forbids trainee from viewing feedback on an unpublished course (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', status: 'DRAFT' }],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/100/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('returns 404 COURSE_NOT_FOUND when course does not exist', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/courses/999/feedback')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('COURSE_NOT_FOUND');

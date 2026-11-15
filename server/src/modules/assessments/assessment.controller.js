@@ -5,6 +5,8 @@ import {
   assessmentQuestionParamsSchema,
   attemptIdParamSchema,
   courseIdParamSchema,
+  courseFeedbackBodySchema,
+  courseFeedbackQuerySchema,
   courseResultsQuerySchema,
   createAssessmentBodySchema,
   createQuestionBodySchema,
@@ -122,5 +124,19 @@ export const getCourseResultsHandler = asyncHandler(async (req, res) => {
   const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
   const query = parseWithSchema(courseResultsQuerySchema, req.query ?? {});
   const result = await assessmentService.getCourseResults(courseId, query, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const upsertCourseFeedbackHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const payload = parseWithSchema(courseFeedbackBodySchema, req.body ?? {});
+  const result = await assessmentService.upsertCourseFeedback(courseId, payload, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const getCourseFeedbackHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const query = parseWithSchema(courseFeedbackQuerySchema, req.query ?? {});
+  const result = await assessmentService.getCourseFeedback(courseId, query, req.user);
   return sendSuccess(res, result, 200);
 });
