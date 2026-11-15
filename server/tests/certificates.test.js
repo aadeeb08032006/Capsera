@@ -92,7 +92,9 @@ describe('Certificates Module (CP-06)', () => {
           // 3. findCertificateByTraineeAndCourse
           .mockResolvedValueOnce({ rows: [] })
           // 4. insertCertificate
-          .mockResolvedValueOnce({ rows: [makeCertificateRow()] }),
+          .mockResolvedValueOnce({ rows: [makeCertificateRow()] })
+          // 5. insertCertificateIssuedAuditLog
+          .mockResolvedValueOnce({ rows: [{ id: '501' }] }),
       };
       withTransaction.mockImplementationOnce(async (work) => work(fakeClient));
 
@@ -103,11 +105,23 @@ describe('Certificates Module (CP-06)', () => {
       expect(result.certificate.certificateCode).toBe('CAP-A1B2-C3D4-E5F6');
       expect(result.certificate.isValid).toBe(true);
 
-      expect(fakeClient.query).toHaveBeenCalledTimes(4);
+      expect(fakeClient.query).toHaveBeenCalledTimes(5);
       expect(fakeClient.query.mock.calls[0][0]).toContain('FOR UPDATE');
       expect(fakeClient.query.mock.calls[1][0]).toContain("SET status = 'COMPLETED'");
       expect(fakeClient.query.mock.calls[3][0]).toContain('ON CONFLICT DO NOTHING');
       expect(fakeClient.query.mock.calls[3][1][2]).toMatch(/^CAP-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);
+
+      const [auditSql, auditParams] = fakeClient.query.mock.calls[4];
+      expect(auditSql).toContain('INSERT INTO audit_logs');
+      expect(auditSql).toContain("'CERTIFICATE_ISSUED'");
+      expect(auditSql).toContain("'certificates'");
+      expect(auditSql).toContain('NULL');
+      expect(auditParams[0]).toBe('1');
+      expect(JSON.parse(auditParams[1])).toEqual({
+        traineeId: '25',
+        courseId: '4',
+        certificateCode: 'CAP-A1B2-C3D4-E5F6',
+      });
     });
 
     it('supports courses with only optional assessments when all lessons are complete', async () => {
@@ -165,6 +179,7 @@ describe('Certificates Module (CP-06)', () => {
         certificate: null,
       });
       expect(fakeClient.query).toHaveBeenCalledTimes(1);
+      expect(fakeClient.query.mock.calls.some(([sql]) => sql.includes('audit_logs'))).toBe(false);
     });
 
     it('rejects eligibility when the course has zero lessons', async () => {
@@ -261,10 +276,11 @@ describe('Certificates Module (CP-06)', () => {
       expect(result.certificate.certificateCode).toBe('CAP-1111-2222-3333');
       expect(withTransaction).not.toHaveBeenCalled();
       expect(fakeClient.query).toHaveBeenCalledTimes(2);
+      expect(fakeClient.query.mock.calls.some(([sql]) => sql.includes('audit_logs'))).toBe(false);
     });
 
     it('handles ON CONFLICT duplicate trainee/course and certificate_code collisions safely', async () => {
-      const winnerRow = makeCertificateRow({ certificateCode: 'CAP-9999-8888-7777' });
+      const winnerRow = makeCertificateRow({ id: '7', certificateCode: 'CAP-9999-8888-7777' });
       const fakeClient = {
         query: vi
           .fn()
@@ -288,7 +304,9 @@ describe('Certificates Module (CP-06)', () => {
           // Check trainee/course after conflict -> null => retry with new code
           .mockResolvedValueOnce({ rows: [] })
           // Attempt 2: insert succeeds
-          .mockResolvedValueOnce({ rows: [winnerRow] }),
+          .mockResolvedValueOnce({ rows: [winnerRow] })
+          // Audit log written once for winning insert only
+          .mockResolvedValueOnce({ rows: [{ id: '502' }] }),
       };
       withTransaction.mockImplementationOnce(async (work) => work(fakeClient));
 
@@ -296,6 +314,115 @@ describe('Certificates Module (CP-06)', () => {
 
       expect(result.issued).toBe(true);
       expect(result.certificate.certificateCode).toBe('CAP-9999-8888-7777');
+      expect(fakeClient.query).toHaveBeenCalledTimes(6);
+      const auditCalls = fakeClient.query.mock.calls.filter(([sql]) => sql.includes('audit_logs'));
+      expect(auditCalls).toHaveLength(1);
+      expect(auditCalls[0][1][0]).toBe('7');
+      expect(JSON.parse(auditCalls[0][1][1])).toEqual({
+        traineeId: '25',
+        courseId: '4',
+        certificateCode: 'CAP-9999-8888-7777',
+      });
+    });
+
+    it('writes no audit event when losing a concurrent ON CONFLICT duplicate race', async () => {
+      const winnerRow = makeCertificateRow({ id: '12', certificateCode: 'CAP-RACE-0001-9999' });
+      const fakeClient = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '99',
+                enrollmentStatus: 'COMPLETED',
+                completedAt: '2026-11-14T08:00:00.000Z',
+                totalLessons: 2,
+                completedLessons: 2,
+                requiredAssessmentCount: 0,
+                passedRequiredAssessmentCount: 0,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rows: [] })
+          // Insert hits ON CONFLICT DO NOTHING and loses race
+          .mockResolvedValueOnce({ rows: [] })
+          // Post-conflict check finds winner row
+          .mockResolvedValueOnce({ rows: [winnerRow] }),
+      };
+      withTransaction.mockImplementationOnce(async (work) => work(fakeClient));
+
+      const result = await issueCertificateIfEligible('25', '4');
+
+      expect(result.issued).toBe(false);
+      expect(result.reason).toBe('ALREADY_ISSUED');
+      expect(result.certificate.id).toBe('12');
+      expect(fakeClient.query).toHaveBeenCalledTimes(4);
+      expect(fakeClient.query.mock.calls.some(([sql]) => sql.includes('audit_logs'))).toBe(false);
+    });
+
+    it('reuses a caller-provided transaction client for certificate and audit writes', async () => {
+      const createdRow = makeCertificateRow({ id: '18', certificateCode: 'CAP-TX11-2233-4455' });
+      const callerClient = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '105',
+                enrollmentStatus: 'COMPLETED',
+                completedAt: '2026-11-14T08:00:00.000Z',
+                totalLessons: 1,
+                completedLessons: 1,
+                requiredAssessmentCount: 0,
+                passedRequiredAssessmentCount: 0,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [createdRow] })
+          .mockResolvedValueOnce({ rows: [{ id: '503' }] }),
+      };
+
+      const result = await issueCertificateIfEligible('25', '4', { client: callerClient });
+
+      expect(result.issued).toBe(true);
+      expect(result.certificate.id).toBe('18');
+      expect(withTransaction).not.toHaveBeenCalled();
+      expect(callerClient.query).toHaveBeenCalledTimes(4);
+      expect(callerClient.query.mock.calls[3][0]).toContain('INSERT INTO audit_logs');
+      expect(callerClient.query.mock.calls[3][1][0]).toBe('18');
+    });
+
+    it('aborts issuance and rejects if writing the audit event fails', async () => {
+      const fakeClient = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '99',
+                enrollmentStatus: 'ACTIVE',
+                completedAt: null,
+                totalLessons: 2,
+                completedLessons: 2,
+                requiredAssessmentCount: 0,
+                passedRequiredAssessmentCount: 0,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [{ id: '99', status: 'COMPLETED', completedAt: '2026-11-14T09:30:00.000Z' }],
+          })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [makeCertificateRow({ id: '21' })] })
+          .mockRejectedValueOnce(new Error('relation "audit_logs" does not exist')),
+      };
+      withTransaction.mockImplementationOnce(async (work) => work(fakeClient));
+
+      await expect(issueCertificateIfEligible('25', '4')).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
       expect(fakeClient.query).toHaveBeenCalledTimes(5);
     });
 
