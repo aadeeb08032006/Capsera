@@ -911,7 +911,7 @@ export async function getAttemptById(attemptId, actor) {
         q.correct_option,
         q.explanation,
         q.points
-      FROM assessment_attempt_answers ans
+      FROM attempt_answers ans
       JOIN questions q ON q.id = ans.question_id
       WHERE ans.attempt_id = $1
       ORDER BY q.question_order ASC
@@ -944,5 +944,700 @@ export async function getAttemptById(attemptId, actor) {
   return {
     attempt: mapAttemptRow(att),
     remainingSeconds: 0,
+  };
+}
+
+/**
+ * Evaluates course completion criteria for a trainee inside an active transaction.
+ * Transitions enrollment to COMPLETED if:
+ * 1. Trainee has an ACTIVE enrollment.
+ * 2. All lessons in the course (if any) have been marked completed in lesson_progress.
+ * 3. All PUBLISHED assessments with is_required = TRUE have at least one GRADED attempt with is_passed = TRUE.
+ */
+export async function checkAndTriggerCourseCompletion(courseId, traineeId, client) {
+  const enrollmentRes = await runSql(
+    `SELECT id, status
+     FROM enrollments
+     WHERE course_id = $1 AND trainee_id = $2 AND status = 'ACTIVE'
+     LIMIT 1
+     FOR UPDATE`,
+    [String(courseId), String(traineeId)],
+    client,
+  );
+
+  if (!enrollmentRes.rows.length) {
+    return false;
+  }
+  const enrollment = enrollmentRes.rows[0];
+
+  // Check lesson completion
+  const lessonsRes = await runSql(
+    `SELECT COUNT(*)::int AS total FROM lessons WHERE course_id = $1`,
+    [String(courseId)],
+    client,
+  );
+  const totalLessons = Number(lessonsRes.rows[0]?.total || 0);
+
+  if (totalLessons > 0) {
+    const progressRes = await runSql(
+      `SELECT COUNT(DISTINCT lesson_id)::int AS completed
+       FROM lesson_progress
+       WHERE course_id = $1 AND enrollment_id = $2`,
+      [String(courseId), String(enrollment.id)],
+      client,
+    );
+    const completedLessons = Number(progressRes.rows[0]?.completed || 0);
+    if (completedLessons < totalLessons) {
+      return false;
+    }
+  }
+
+  // Check required published assessments
+  const reqAssessmentsRes = await runSql(
+    `SELECT id FROM assessments WHERE course_id = $1 AND status = 'PUBLISHED' AND is_required = TRUE`,
+    [String(courseId)],
+    client,
+  );
+  const requiredAssessments = reqAssessmentsRes.rows;
+
+  if (requiredAssessments.length > 0) {
+    const passedRes = await runSql(
+      `SELECT COUNT(DISTINCT assessment_id)::int AS passed_count
+       FROM assessment_attempts
+       WHERE trainee_id = $1
+         AND assessment_id IN (
+           SELECT id FROM assessments WHERE course_id = $2 AND status = 'PUBLISHED' AND is_required = TRUE
+         )
+         AND status = 'GRADED'
+         AND is_passed = TRUE`,
+      [String(traineeId), String(courseId)],
+      client,
+    );
+    const passedCount = Number(passedRes.rows[0]?.passed_count || 0);
+    if (passedCount < requiredAssessments.length) {
+      return false;
+    }
+  }
+
+  // Transition enrollment to COMPLETED
+  await runSql(
+    `UPDATE enrollments
+     SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [String(enrollment.id)],
+    client,
+  );
+
+  return true;
+}
+
+/**
+ * Auto-grades and finalizes an in-progress quiz attempt inside a transaction (TRAINEE only).
+ * Performs atomic row locking, time limit checking with 30s grace period,
+ * evaluation against question bank, scorecard generation, and course completion checking.
+ */
+export async function submitAttempt(attemptId, payload, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only enrolled trainees can submit assessment attempts');
+  }
+
+  return await withTransaction(async (client) => {
+    // 1. Lock the attempt row
+    const attemptSql = `
+      SELECT
+        att.*,
+        a.course_id,
+        a.title AS assessment_title,
+        a.duration_minutes,
+        a.deadline_at,
+        a.pass_percentage,
+        a.status AS assessment_status,
+        a.is_required,
+        c.title AS course_title
+      FROM assessment_attempts att
+      JOIN assessments a ON a.id = att.assessment_id
+      JOIN courses c ON c.id = a.course_id
+      WHERE att.id = $1
+      FOR UPDATE OF att
+    `;
+
+    const attemptRes = await runSql(attemptSql, [String(attemptId)], client);
+    if (!attemptRes.rows.length) {
+      throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Attempt not found');
+    }
+
+    const att = attemptRes.rows[0];
+
+    // Ownership check
+    if (String(att.trainee_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'Access denied to this attempt');
+    }
+
+    // Status checks
+    if (att.status === ATTEMPT_STATUSES.GRADED || att.status === ATTEMPT_STATUSES.SUBMITTED) {
+      throw new AppError(
+        409,
+        'ATTEMPT_ALREADY_SUBMITTED',
+        'This attempt has already been submitted and graded',
+      );
+    }
+    if (att.status === ATTEMPT_STATUSES.EXPIRED) {
+      throw new AppError(
+        409,
+        'ATTEMPT_EXPIRED',
+        'Assessment attempt time limit has expired',
+      );
+    }
+    if (att.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
+      throw new AppError(
+        409,
+        'ATTEMPT_NOT_IN_PROGRESS',
+        'Only in-progress attempts can be submitted',
+      );
+    }
+
+    // Expiry check with 30-second network latency grace buffer
+    const expiresAt = calculateAttemptExpiry(
+      att.started_at,
+      att.duration_minutes,
+      att.deadline_at,
+    );
+    const now = new Date();
+    const GRACE_PERIOD_MS = 30 * 1000;
+
+    if (expiresAt && now.getTime() > expiresAt.getTime() + GRACE_PERIOD_MS) {
+      await runSql(
+        `UPDATE assessment_attempts
+         SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [String(att.id)],
+        client,
+      );
+      throw new AppError(
+        409,
+        'ATTEMPT_EXPIRED',
+        'Assessment attempt time limit has expired',
+      );
+    }
+
+    // 2. Fetch all questions for this assessment
+    const questionsSql = `
+      SELECT
+        id,
+        assessment_id,
+        question_order,
+        question_text,
+        option_a,
+        option_b,
+        option_c,
+        option_d,
+        correct_option,
+        explanation,
+        points
+      FROM questions
+      WHERE assessment_id = $1
+      ORDER BY question_order ASC
+    `;
+    const questionsRes = await runSql(questionsSql, [String(att.assessment_id)], client);
+    const questions = questionsRes.rows;
+
+    if (!questions.length) {
+      throw new AppError(409, 'ASSESSMENT_EMPTY', 'Assessment has no questions to grade');
+    }
+
+    const questionsMap = new Map(questions.map((q) => [String(q.id), q]));
+
+    // Validate that submitted answers reference valid questions for this assessment
+    const submittedAnswers = payload.answers || [];
+    for (const ans of submittedAnswers) {
+      if (!questionsMap.has(String(ans.questionId))) {
+        throw new AppError(
+          400,
+          'VALIDATION_ERROR',
+          `Question ${ans.questionId} does not belong to this assessment`,
+        );
+      }
+    }
+
+    const submittedMap = new Map(
+      submittedAnswers.map((ans) => [String(ans.questionId), ans.selectedOption ?? null]),
+    );
+
+    // 3. Auto-grade each question
+    let earnedPoints = 0;
+    let totalPoints = 0;
+    const gradedAnswers = [];
+
+    for (const q of questions) {
+      const qPoints = Number(q.points);
+      totalPoints += qPoints;
+
+      const selectedOption = submittedMap.get(String(q.id)) ?? null;
+      const isCorrect = selectedOption !== null && selectedOption === q.correct_option;
+      const pointsAwarded = isCorrect ? qPoints : 0;
+      earnedPoints += pointsAwarded;
+
+      // Insert record into attempt_answers
+      const insertAnsSql = `
+        INSERT INTO attempt_answers (
+          attempt_id,
+          assessment_id,
+          question_id,
+          selected_option,
+          is_correct,
+          points_awarded,
+          answered_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+        RETURNING *
+      `;
+
+      const ansRes = await runSql(
+        insertAnsSql,
+        [
+          String(att.id),
+          String(att.assessment_id),
+          String(q.id),
+          selectedOption,
+          isCorrect,
+          pointsAwarded,
+        ],
+        client,
+      );
+
+      const ansRow = ansRes.rows[0];
+      gradedAnswers.push({
+        id: String(ansRow.id),
+        attemptId: String(ansRow.attempt_id),
+        questionId: String(ansRow.question_id),
+        selectedOption: ansRow.selected_option ?? null,
+        isCorrect: ansRow.is_correct,
+        pointsAwarded: Number(ansRow.points_awarded),
+        questionText: q.question_text,
+        optionA: q.option_a,
+        optionB: q.option_b,
+        optionC: q.option_c,
+        optionD: q.option_d,
+        correctOption: q.correct_option,
+        explanation: q.explanation ?? null,
+        points: qPoints,
+      });
+    }
+
+    const scorePercentage =
+      totalPoints > 0 ? Number(((earnedPoints / totalPoints) * 100).toFixed(2)) : 0;
+    const isPassed = scorePercentage >= Number(att.pass_percentage);
+
+    // 4. Update attempt row to GRADED
+    const updateAttemptSql = `
+      UPDATE assessment_attempts
+      SET
+        status = 'GRADED',
+        submitted_at = CURRENT_TIMESTAMP,
+        graded_at = CURRENT_TIMESTAMP,
+        earned_points = $1,
+        total_points = $2,
+        score_percentage = $3,
+        is_passed = $4,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING *
+    `;
+
+    const updatedRes = await runSql(
+      updateAttemptSql,
+      [earnedPoints, totalPoints, scorePercentage, isPassed, String(att.id)],
+      client,
+    );
+
+    // 5. Check and trigger course completion if passed
+    if (isPassed) {
+      await checkAndTriggerCourseCompletion(att.course_id, att.trainee_id, client);
+    }
+
+    return {
+      attempt: mapAttemptRow(updatedRes.rows[0], att),
+      answers: gradedAnswers,
+    };
+  });
+}
+
+/**
+ * List paginated attempt history for the authenticated trainee.
+ */
+export async function listMyAttempts(query, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only trainees can view their attempt history');
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  const conditions = ['att.trainee_id = $1'];
+  const params = [String(actor.id)];
+
+  if (query.courseId) {
+    params.push(String(query.courseId));
+    conditions.push(`a.course_id = $${params.length}`);
+  }
+
+  if (query.assessmentId) {
+    params.push(String(query.assessmentId));
+    conditions.push(`att.assessment_id = $${params.length}`);
+  }
+
+  const whereClause = conditions.join(' AND ');
+
+  const countSql = `
+    SELECT COUNT(*)::int AS total
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    WHERE ${whereClause}
+  `;
+  const countRes = await runSql(countSql, params);
+  const totalItems = Number(countRes.rows[0]?.total || 0);
+
+  const queryParams = [...params, pageSize, offset];
+  const listSql = `
+    SELECT
+      att.id,
+      att.assessment_id,
+      a.title AS assessment_title,
+      a.course_id,
+      c.title AS course_title,
+      att.attempt_number,
+      att.status,
+      att.earned_points,
+      att.total_points,
+      att.score_percentage,
+      att.is_passed,
+      att.started_at,
+      att.submitted_at,
+      att.graded_at,
+      att.created_at,
+      att.updated_at
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    JOIN courses c ON c.id = a.course_id
+    WHERE ${whereClause}
+    ORDER BY att.started_at DESC, att.id DESC
+    LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}
+  `;
+
+  const listRes = await runSql(listSql, queryParams);
+
+  const items = listRes.rows.map((row) => ({
+    id: String(row.id),
+    assessmentId: String(row.assessment_id),
+    assessmentTitle: row.assessment_title,
+    courseId: String(row.course_id),
+    courseTitle: row.course_title,
+    attemptNumber: Number(row.attempt_number),
+    status: row.status,
+    earnedPoints: row.earned_points !== null ? Number(row.earned_points) : null,
+    totalPoints: row.total_points !== null ? Number(row.total_points) : null,
+    scorePercentage: row.score_percentage !== null ? Number(row.score_percentage) : null,
+    isPassed: row.is_passed !== null ? Boolean(row.is_passed) : null,
+    startedAt: toIsoString(row.started_at),
+    submittedAt: toIsoString(row.submitted_at),
+    gradedAt: toIsoString(row.graded_at),
+  }));
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+  };
+}
+
+/**
+ * Get aggregate assessment metrics and paginated student results for a course.
+ * Accessible only by course owner TRAINER or ADMIN.
+ */
+export async function getCourseResults(courseId, query, actor) {
+  // 1. Authorize course owner or admin
+  const courseRes = await runSql(
+    'SELECT id, trainer_id, title FROM courses WHERE id = $1',
+    [String(courseId)],
+  );
+  if (!courseRes.rows.length) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
+  }
+  const course = courseRes.rows[0];
+
+  if (actor.role !== ROLES.ADMIN && String(course.trainer_id) !== String(actor.id)) {
+    throw new AppError(403, 'FORBIDDEN', 'You can only view results for your own courses');
+  }
+
+  // If assessmentId is specified, verify it exists and belongs to this course
+  if (query.assessmentId) {
+    const aCheck = await runSql(
+      'SELECT id FROM assessments WHERE id = $1 AND course_id = $2',
+      [String(query.assessmentId), String(courseId)],
+    );
+    if (!aCheck.rows.length) {
+      throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found in this course');
+    }
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  const baseConditions = ['a.course_id = $1'];
+  const baseParams = [String(courseId)];
+
+  if (query.assessmentId) {
+    baseParams.push(String(query.assessmentId));
+    baseConditions.push(`a.id = $${baseParams.length}`);
+  }
+
+  const whereClause = baseConditions.join(' AND ');
+
+  // 2. Compute summary metrics
+  const totalAssessmentsRes = await runSql(
+    query.assessmentId
+      ? `SELECT 1::int AS count`
+      : `SELECT COUNT(*)::int AS count FROM assessments WHERE course_id = $1`,
+    [String(courseId)],
+  );
+  const totalAssessments = Number(totalAssessmentsRes.rows[0]?.count || 0);
+
+  const statsSql = `
+    SELECT
+      COUNT(att.id)::int AS total_attempts,
+      COUNT(att.id) FILTER (WHERE att.status = 'GRADED')::int AS graded_attempts,
+      COUNT(att.id) FILTER (WHERE att.status = 'GRADED' AND att.is_passed = TRUE)::int AS passed_attempts,
+      COALESCE(AVG(att.score_percentage) FILTER (WHERE att.status = 'GRADED'), 0)::numeric(5,2) AS average_score
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    WHERE ${whereClause}
+  `;
+  const statsRes = await runSql(statsSql, baseParams);
+  const stats = statsRes.rows[0] || {};
+
+  const totalAttempts = Number(stats.total_attempts || 0);
+  const gradedAttempts = Number(stats.graded_attempts || 0);
+  const passedAttempts = Number(stats.passed_attempts || 0);
+  const passRate =
+    gradedAttempts > 0 ? Number(((passedAttempts / gradedAttempts) * 100).toFixed(2)) : 0;
+  const averageScorePercentage = Number(Number(stats.average_score || 0).toFixed(2));
+
+  // 3. Paginated items
+  const countSql = `
+    SELECT COUNT(*)::int AS total
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    WHERE ${whereClause}
+  `;
+  const countRes = await runSql(countSql, baseParams);
+  const totalItems = Number(countRes.rows[0]?.total || 0);
+
+  const queryParams = [...baseParams, pageSize, offset];
+  const itemsSql = `
+    SELECT
+      att.id,
+      att.assessment_id,
+      a.title AS assessment_title,
+      a.course_id,
+      att.trainee_id,
+      u.full_name AS trainee_name,
+      att.attempt_number,
+      att.status,
+      att.earned_points,
+      att.total_points,
+      att.score_percentage,
+      att.is_passed,
+      att.started_at,
+      att.submitted_at,
+      att.graded_at
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    JOIN users u ON u.id = att.trainee_id
+    WHERE ${whereClause}
+    ORDER BY att.started_at DESC, att.id DESC
+    LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}
+  `;
+  const itemsRes = await runSql(itemsSql, queryParams);
+
+  const items = itemsRes.rows.map((row) => ({
+    id: String(row.id),
+    assessmentId: String(row.assessment_id),
+    assessmentTitle: row.assessment_title,
+    courseId: String(row.course_id),
+    traineeId: String(row.trainee_id),
+    traineeName: row.trainee_name,
+    attemptNumber: Number(row.attempt_number),
+    status: row.status,
+    earnedPoints: row.earned_points !== null ? Number(row.earned_points) : null,
+    totalPoints: row.total_points !== null ? Number(row.total_points) : null,
+    scorePercentage: row.score_percentage !== null ? Number(row.score_percentage) : null,
+    isPassed: row.is_passed !== null ? Boolean(row.is_passed) : null,
+    startedAt: toIsoString(row.started_at),
+    submittedAt: toIsoString(row.submitted_at),
+    gradedAt: toIsoString(row.graded_at),
+  }));
+
+  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / pageSize);
+
+  return {
+    summary: {
+      courseId: String(courseId),
+      totalAssessments,
+      totalAttempts,
+      gradedAttempts,
+      passedAttempts,
+      passRate,
+      averageScorePercentage,
+    },
+    items,
+    pagination: {
+      page,
+      pageSize,
+      totalItems,
+      totalPages,
+    },
+  };
+}
+
+/**
+ * Format a feedback database row into a canonical camelCase DTO.
+ */
+export function mapFeedbackRow(row) {
+  return {
+    id: String(row.id),
+    courseId: String(row.course_id),
+    rating: Number(row.rating),
+    comment: row.comment ?? null,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+/**
+ * Upsert a trainee review/feedback for an enrolled course.
+ * Uses PostgreSQL INSERT ... ON CONFLICT (trainee_id, course_id) DO UPDATE.
+ */
+export async function upsertCourseFeedback(courseId, payload, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only trainees can submit course feedback');
+  }
+
+  await verifyCourseEnrollment(courseId, actor.id, {
+    requirePublishedCourse: true,
+    allowedStatuses: [ENROLLMENT_STATUSES.ACTIVE, ENROLLMENT_STATUSES.COMPLETED],
+  });
+
+  const upsertSql = `
+    INSERT INTO feedback (
+      trainee_id,
+      course_id,
+      rating,
+      comment,
+      created_at,
+      updated_at
+    ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT (trainee_id, course_id) DO UPDATE
+    SET
+      rating = EXCLUDED.rating,
+      comment = EXCLUDED.comment,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING *
+  `;
+
+  const result = await runSql(upsertSql, [
+    String(actor.id),
+    String(courseId),
+    payload.rating,
+    payload.comment ?? null,
+  ]);
+
+  return {
+    feedback: mapFeedbackRow(result.rows[0]),
+  };
+}
+
+/**
+ * Get aggregate rating statistics and paginated public reviews for a course.
+ * Preserves student privacy: never returns emails, IDs, or sensitive account fields.
+ */
+export async function getCourseFeedback(courseId, query, actor) {
+  const courseRes = await runSql(
+    'SELECT id, trainer_id, status FROM courses WHERE id = $1',
+    [String(courseId)],
+  );
+  if (!courseRes.rows.length) {
+    throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
+  }
+  const course = courseRes.rows[0];
+
+  if (course.status !== COURSE_STATUSES.PUBLISHED) {
+    if (actor.role !== ROLES.ADMIN && String(course.trainer_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'Cannot view feedback for an unpublished course');
+    }
+  }
+
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  // 1. Aggregate statistics
+  const summaryRes = await runSql(
+    `SELECT
+       COUNT(*)::int AS total_ratings,
+       COALESCE(AVG(rating), 0)::numeric(3,2) AS average_rating
+     FROM feedback
+     WHERE course_id = $1`,
+    [String(courseId)],
+  );
+
+  const totalRatings = Number(summaryRes.rows[0]?.total_ratings || 0);
+  const averageRating = Number(Number(summaryRes.rows[0]?.average_rating || 0).toFixed(2));
+
+  // 2. Paginated review items (privacy safe: only reviewer_name)
+  const listSql = `
+    SELECT
+      f.id,
+      f.course_id,
+      f.rating,
+      f.comment,
+      f.created_at,
+      f.updated_at,
+      u.full_name AS reviewer_name
+    FROM feedback f
+    JOIN users u ON u.id = f.trainee_id
+    WHERE f.course_id = $1
+    ORDER BY f.created_at DESC, f.id DESC
+    LIMIT $2 OFFSET $3
+  `;
+
+  const listRes = await runSql(listSql, [String(courseId), pageSize, offset]);
+
+  const items = listRes.rows.map((row) => ({
+    id: String(row.id),
+    courseId: String(row.course_id),
+    rating: Number(row.rating),
+    comment: row.comment ?? null,
+    reviewerName: row.reviewer_name,
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  }));
+
+  const totalPages = totalRatings === 0 ? 0 : Math.ceil(totalRatings / pageSize);
+
+  return {
+    summary: {
+      courseId: String(courseId),
+      averageRating,
+      totalRatings,
+    },
+    items,
+    pagination: {
+      page,
+      pageSize,
+      totalItems: totalRatings,
+      totalPages,
+    },
   };
 }

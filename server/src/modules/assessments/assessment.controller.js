@@ -5,10 +5,15 @@ import {
   assessmentQuestionParamsSchema,
   attemptIdParamSchema,
   courseIdParamSchema,
+  courseFeedbackBodySchema,
+  courseFeedbackQuerySchema,
+  courseResultsQuerySchema,
   createAssessmentBodySchema,
   createQuestionBodySchema,
   listAssessmentsQuerySchema,
+  listMyAttemptsQuerySchema,
   parseWithSchema,
+  submitAttemptBodySchema,
   updateAssessmentBodySchema,
   updateQuestionBodySchema,
 } from './assessment.validation.js';
@@ -100,4 +105,38 @@ export const getAttemptHandler = asyncHandler(async (req, res) => {
   const { attemptId } = parseWithSchema(attemptIdParamSchema, req.params);
   const result = await assessmentService.getAttemptById(attemptId, req.user);
   return sendSuccess(res, result);
+});
+
+export const submitAttemptHandler = asyncHandler(async (req, res) => {
+  const { attemptId } = parseWithSchema(attemptIdParamSchema, req.params);
+  const payload = parseWithSchema(submitAttemptBodySchema, req.body ?? {});
+  const result = await assessmentService.submitAttempt(attemptId, payload, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const listMyAttemptsHandler = asyncHandler(async (req, res) => {
+  const query = parseWithSchema(listMyAttemptsQuerySchema, req.query ?? {});
+  const result = await assessmentService.listMyAttempts(query, req.user);
+  return sendPaginated(res, result);
+});
+
+export const getCourseResultsHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const query = parseWithSchema(courseResultsQuerySchema, req.query ?? {});
+  const result = await assessmentService.getCourseResults(courseId, query, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const upsertCourseFeedbackHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const payload = parseWithSchema(courseFeedbackBodySchema, req.body ?? {});
+  const result = await assessmentService.upsertCourseFeedback(courseId, payload, req.user);
+  return sendSuccess(res, result, 200);
+});
+
+export const getCourseFeedbackHandler = asyncHandler(async (req, res) => {
+  const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
+  const query = parseWithSchema(courseFeedbackQuerySchema, req.query ?? {});
+  const result = await assessmentService.getCourseFeedback(courseId, query, req.user);
+  return sendSuccess(res, result, 200);
 });
