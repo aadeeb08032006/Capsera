@@ -15,6 +15,7 @@ import courseRoutes from './modules/courses/course.routes.js';
 import { lessonRoutes } from './modules/courses/lesson.routes.js';
 import {
   assessmentRouter,
+  attemptRouter,
   courseAssessmentRouter,
 } from './modules/assessments/assessment.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
@@ -89,6 +90,7 @@ apiRouter.use('/courses/:courseId/assessments', courseAssessmentRouter);
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/lessons', lessonRoutes);
 apiRouter.use('/assessments', assessmentRouter);
+apiRouter.use('/attempts', attemptRouter);
 apiRouter.use('/skills', skillsRoutes);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);

@@ -3,6 +3,7 @@ import { sendPaginated, sendSuccess } from '../../shared/response.js';
 import {
   assessmentIdParamSchema,
   assessmentQuestionParamsSchema,
+  attemptIdParamSchema,
   courseIdParamSchema,
   createAssessmentBodySchema,
   createQuestionBodySchema,
@@ -87,4 +88,16 @@ export const deleteQuestionHandler = asyncHandler(async (req, res) => {
   const { assessmentId, questionId } = parseWithSchema(assessmentQuestionParamsSchema, req.params);
   const outcome = await assessmentService.deleteQuestion(assessmentId, questionId, req.user);
   return sendSuccess(res, outcome);
+});
+
+export const startAttemptHandler = asyncHandler(async (req, res) => {
+  const { assessmentId } = parseWithSchema(assessmentIdParamSchema, req.params);
+  const result = await assessmentService.startAttempt(assessmentId, req.user);
+  return sendSuccess(res, result, 201);
+});
+
+export const getAttemptHandler = asyncHandler(async (req, res) => {
+  const { attemptId } = parseWithSchema(attemptIdParamSchema, req.params);
+  const result = await assessmentService.getAttemptById(attemptId, req.user);
+  return sendSuccess(res, result);
 });
