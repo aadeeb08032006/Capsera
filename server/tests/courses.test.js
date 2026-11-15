@@ -53,6 +53,21 @@ function makeCourseRow(overrides = {}) {
   };
 }
 
+function makeLessonRow(overrides = {}) {
+  const now = new Date('2026-11-11T10:00:00.000Z');
+  return {
+    id: '1',
+    course_id: '1',
+    title: 'Lesson 1',
+    content: 'Lesson content',
+    lesson_order: 1,
+    estimated_duration_minutes: 30,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  };
+}
+
 describe('Courses API (/api/v1/courses)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -317,10 +332,16 @@ describe('Courses API (/api/v1/courses)', () => {
       expect(otherTrainerRes.status).toBe(403);
     });
 
-    it('allows owning TRAINER to view own DRAFT course (200)', async () => {
+    it('allows owning TRAINER to view own DRAFT course with lessons (200)', async () => {
       mockAuthUser({ id: '10', role: 'TRAINER' });
       executeQuery.mockResolvedValueOnce({
         rows: [makeCourseRow({ id: '3', trainer_id: '10', status: 'DRAFT', trainer_name: 'T1', lesson_count: 2 })],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeLessonRow({ id: '101', course_id: '3', lesson_order: 1, title: 'Intro' }),
+          makeLessonRow({ id: '102', course_id: '3', lesson_order: 2, title: 'Advanced' }),
+        ],
       });
 
       const res = await request(app)
@@ -329,6 +350,123 @@ describe('Courses API (/api/v1/courses)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.course.lessonCount).toBe(2);
+      expect(res.body.data.course.lessons).toHaveLength(2);
+      expect(res.body.data.course.lessons[0].title).toBe('Intro');
+      expect(res.body.data.course.lessons[1].title).toBe('Advanced');
+    });
+
+    it('returns ordered lessons for an ADMIN (200)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeCourseRow({ id: '1', trainer_id: '10', status: 'PUBLISHED' })],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeLessonRow({ id: '201', course_id: '1', lesson_order: 1 })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/1')
+        .set('Authorization', `Bearer ${makeToken('1')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.lessons).toHaveLength(1);
+      expect(res.body.data.course.lessons[0].id).toBe('201');
+    });
+
+    it('returns ordered lessons for an enrolled trainee (200)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeCourseRow({ id: '1', trainer_id: '10', status: 'PUBLISHED' })],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '99', status: 'ACTIVE' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeLessonRow({ id: '201', course_id: '1', lesson_order: 1, title: 'Lesson 1' }),
+          makeLessonRow({ id: '202', course_id: '1', lesson_order: 2, title: 'Lesson 2' }),
+        ],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/1')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.lessons).toHaveLength(2);
+      expect(res.body.data.course.lessons[0].position).toBe(1);
+      expect(res.body.data.course.lessons[1].position).toBe(2);
+    });
+
+    it('returns course info only without lessons for an unenrolled trainee (200)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeCourseRow({ id: '1', trainer_id: '10', status: 'PUBLISHED', title: 'Public Course' })],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/1')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.id).toBe('1');
+      expect(res.body.data.course.title).toBe('Public Course');
+      expect(res.body.data.course.lessons).toBeUndefined();
+    });
+
+    it('allows enrolled trainee to view ARCHIVED course with ordered lessons (200)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '1',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            archived_at: new Date('2026-11-12T10:00:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '99', status: 'ACTIVE' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeLessonRow({ id: '201', course_id: '1', lesson_order: 1 })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/1')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.status).toBe('ARCHIVED');
+      expect(res.body.data.course.lessons).toHaveLength(1);
+    });
+
+    it('hides ARCHIVED course from unenrolled trainee (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '1',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            archived_at: new Date('2026-11-12T10:00:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/courses/1')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
     });
   });
 
@@ -408,6 +546,134 @@ describe('Courses API (/api/v1/courses)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.course.title).toBe('Revised Title');
+    });
+
+    it('allows owner trainer to archive a course via PATCH (200)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+            archived_at: new Date('2026-11-11T12:00:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'ARCHIVED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.status).toBe('ARCHIVED');
+      expect(res.body.data.course.archivedAt).toBeTruthy();
+    });
+
+    it('allows ADMIN to unpublish a PUBLISHED course back to DRAFT via PATCH (200)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'DRAFT',
+            published_at: null,
+            archived_at: null,
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.course.status).toBe('DRAFT');
+      expect(res.body.data.course.publishedAt).toBeNull();
+      expect(res.body.data.course.archivedAt).toBeNull();
+    });
+
+    it('prevents non-admin trainer from unpublishing to DRAFT (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'PUBLISHED',
+            published_at: new Date('2026-11-11T10:30:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('rejects unpublishing an ARCHIVED course back to DRAFT (409 INVALID_STATUS_TRANSITION)', async () => {
+      mockAuthUser({ id: '1', role: 'ADMIN' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeCourseRow({
+            id: '5',
+            trainer_id: '10',
+            status: 'ARCHIVED',
+            archived_at: new Date('2026-11-11T11:00:00.000Z'),
+          }),
+        ],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('1')}`)
+        .send({ status: 'DRAFT' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    });
+
+    it('rejects publishing via PATCH (400 VALIDATION_ERROR)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeCourseRow({ id: '5', trainer_id: '10', status: 'DRAFT' })],
+      });
+
+      const res = await request(app)
+        .patch('/api/v1/courses/5')
+        .set('Authorization', `Bearer ${makeToken('10')}`)
+        .send({ status: 'PUBLISHED' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
   });
 

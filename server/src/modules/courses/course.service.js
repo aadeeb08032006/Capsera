@@ -7,6 +7,7 @@ import {
   assertCourseOwnership,
   escapeLikePattern,
   findCourseRowById,
+  findEntitledEnrollment,
   isBlank,
   runSql,
   toIsoString,
@@ -196,30 +197,114 @@ export async function listCourses(filters, actor) {
 
 /**
  * Fetch course detail respecting visibility for DRAFT and ARCHIVED courses.
+ * Returns ordered lessons list only for the owner, Admin, or an enrolled trainee.
+ * Other trainees get course info only, without lesson content.
  */
 export async function getCourseById(courseId, actor) {
   const row = await findCourseRowById(courseId, { includeMetadata: true });
 
-  if (
-    row.status !== COURSE_STATUSES.PUBLISHED &&
-    actor.role !== ROLES.ADMIN &&
-    String(row.trainer_id) !== String(actor.id)
-  ) {
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course');
+  const isOwnerOrAdmin =
+    actor.role === ROLES.ADMIN || String(row.trainer_id) === String(actor.id);
+
+  let enrolledTrainee = false;
+  if (!isOwnerOrAdmin && actor.role === ROLES.TRAINEE) {
+    const enrollment = await findEntitledEnrollment(row.id, actor.id);
+    enrolledTrainee = Boolean(enrollment);
   }
 
-  return mapCourseRow(row);
+  if (!isOwnerOrAdmin) {
+    if (row.status === COURSE_STATUSES.PUBLISHED) {
+      // Published courses can be viewed by anyone authenticated
+    } else if (row.status === COURSE_STATUSES.ARCHIVED && enrolledTrainee) {
+      // Existing enrollments stay untouched: enrolled trainees can still view archived course
+    } else {
+      throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this course');
+    }
+  }
+
+  const course = mapCourseRow(row);
+
+  if (isOwnerOrAdmin || enrolledTrainee) {
+    const lessonsResult = await runSql(
+      `SELECT id,
+              course_id,
+              title,
+              content,
+              lesson_order,
+              estimated_duration_minutes,
+              created_at,
+              updated_at
+       FROM lessons
+       WHERE course_id = $1
+       ORDER BY lesson_order ASC, id ASC`,
+      [courseId],
+    );
+
+    const lessonRows = lessonsResult?.rows ?? [];
+    course.lessons = lessonRows.map((lessonRow) => ({
+      id: String(lessonRow.id),
+      courseId: String(lessonRow.course_id),
+      title: lessonRow.title,
+      content: lessonRow.content ?? null,
+      position: Number(lessonRow.lesson_order),
+      estimatedDurationMinutes:
+        lessonRow.estimated_duration_minutes !== null &&
+        lessonRow.estimated_duration_minutes !== undefined
+          ? Number(lessonRow.estimated_duration_minutes)
+          : null,
+      createdAt: toIsoString(lessonRow.created_at),
+      updatedAt: toIsoString(lessonRow.updated_at),
+    }));
+  }
+
+  return course;
 }
 
 /**
- * Update editable metadata of a DRAFT or PUBLISHED course.
+ * Update editable metadata of a DRAFT or PUBLISHED course, or archive/unpublish.
  */
 export async function updateCourse(courseId, updates, actor) {
   const existing = await findCourseRowById(courseId);
   assertCourseOwnership(existing, actor);
 
+  if (updates.status === COURSE_STATUSES.PUBLISHED) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'Courses cannot be published via PATCH. Use POST /api/v1/courses/:courseId/publish',
+    );
+  }
+
   if (existing.status === COURSE_STATUSES.ARCHIVED) {
+    if (updates.status === COURSE_STATUSES.ARCHIVED) {
+      return mapCourseRow(existing);
+    }
     throw new AppError(409, 'INVALID_STATUS_TRANSITION', 'Archived courses cannot be edited');
+  }
+
+  let targetStatus = existing.status;
+  let targetPublishedAt = existing.published_at;
+  let targetArchivedAt = existing.archived_at;
+
+  if (updates.status !== undefined) {
+    if (updates.status === COURSE_STATUSES.ARCHIVED) {
+      targetStatus = COURSE_STATUSES.ARCHIVED;
+      targetArchivedAt = new Date().toISOString();
+    } else if (updates.status === COURSE_STATUSES.DRAFT) {
+      if (actor.role !== ROLES.ADMIN) {
+        throw new AppError(403, 'FORBIDDEN', 'Only admins can unpublish a course back to draft');
+      }
+      if (existing.status !== COURSE_STATUSES.PUBLISHED) {
+        throw new AppError(
+          409,
+          'INVALID_STATUS_TRANSITION',
+          'Only published courses can be unpublished to draft',
+        );
+      }
+      targetStatus = COURSE_STATUSES.DRAFT;
+      targetPublishedAt = null;
+      targetArchivedAt = null;
+    }
   }
 
   const merged = {
@@ -231,7 +316,7 @@ export async function updateCourse(courseId, updates, actor) {
     thumbnailUrl: updates.thumbnailUrl !== undefined ? updates.thumbnailUrl : existing.thumbnail_url,
   };
 
-  if (existing.status === COURSE_STATUSES.PUBLISHED) {
+  if (targetStatus === COURSE_STATUSES.PUBLISHED) {
     const missing = getMissingPublishFields(merged);
     if (missing.length > 0) {
       throw new AppError(
@@ -250,8 +335,11 @@ export async function updateCourse(courseId, updates, actor) {
          subject = $4,
          level = $5,
          thumbnail_url = $6,
+         status = $7,
+         published_at = $8,
+         archived_at = $9,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $7
+     WHERE id = $10
      RETURNING id, trainer_id, title, summary, description, subject, level, thumbnail_url, status, published_at, archived_at, created_at, updated_at`,
     [
       merged.title,
@@ -260,6 +348,9 @@ export async function updateCourse(courseId, updates, actor) {
       merged.subject ?? null,
       merged.level ?? null,
       merged.thumbnailUrl ?? null,
+      targetStatus,
+      targetPublishedAt,
+      targetArchivedAt,
       courseId,
     ],
   );

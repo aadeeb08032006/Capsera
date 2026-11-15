@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "check": "node --check src/index.js && node --check src/app.js && node --check src/config/db.js",
+    "seed:admin": "node scripts/seed-admin.js",
     "test": "vitest run",
     "test:integration": "RUN_PG_INTEGRATION=true DB_NAME=capsera_cp03_test vitest run tests/skills.integration.test.js"
   },

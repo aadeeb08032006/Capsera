@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
 import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
 import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
 
@@ -68,6 +69,10 @@ function FoundationHomePage() {
             </span>
           )}
         </div>
+
+        <p style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+          <Link to="/certificates/verify">Verify a Completion Certificate</Link>
+        </p>
       </section>
 
       <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
@@ -123,6 +128,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<FoundationHomePage />} />
+      <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+      <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
       <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
       <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
       <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
