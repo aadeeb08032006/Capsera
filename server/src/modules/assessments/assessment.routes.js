@@ -8,10 +8,12 @@ import {
   deleteAssessmentHandler,
   deleteQuestionHandler,
   getAssessmentHandler,
+  getAttemptHandler,
   getQuestionHandler,
   listAssessmentsHandler,
   listQuestionsHandler,
   publishAssessmentHandler,
+  startAttemptHandler,
   updateAssessmentHandler,
   updateQuestionHandler,
 } from './assessment.controller.js';
@@ -62,5 +64,16 @@ assessmentRouter.delete(
   requireRole(ROLES.TRAINER, ROLES.ADMIN),
   deleteQuestionHandler,
 );
+
+// ─── Attempt Initiation ───
+assessmentRouter.post(
+  '/:assessmentId/attempts',
+  requireRole(ROLES.TRAINEE),
+  startAttemptHandler,
+);
+
+export const attemptRouter = Router();
+attemptRouter.use(authenticate);
+attemptRouter.get('/:attemptId', getAttemptHandler);
 
 export default assessmentRouter;

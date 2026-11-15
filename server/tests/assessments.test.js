@@ -78,6 +78,33 @@ function makeQuestionRow(overrides = {}) {
   };
 }
 
+function makeAttemptRow(overrides = {}) {
+  const now = new Date('2026-11-15T10:00:00.000Z');
+  return {
+    id: '501',
+    assessment_id: '1',
+    trainee_id: '20',
+    attempt_number: 1,
+    status: 'IN_PROGRESS',
+    started_at: now,
+    submitted_at: null,
+    graded_at: null,
+    earned_points: null,
+    total_points: null,
+    score_percentage: null,
+    is_passed: null,
+    created_at: now,
+    updated_at: now,
+    duration_minutes: 30,
+    deadline_at: null,
+    course_id: '100',
+    assessment_title: 'Synoptic Meteorology Quiz',
+    course_trainer_id: '10',
+    course_title: 'Intro to Atmospheric Science',
+    ...overrides,
+  };
+}
+
 describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/assessments)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1015,6 +1042,326 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('QUESTION_NOT_FOUND');
+    });
+  });
+
+  describe('POST /api/v1/assessments/:assessmentId/attempts (Start Attempt)', () => {
+    it('allows enrolled TRAINEE to start attempt on a published assessment (201 Created)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // 1. findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', status: 'PUBLISHED', course_status: 'PUBLISHED' })],
+      });
+      // 2. verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // 3. verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // withTransaction
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // query existing attempts: 0
+        mockClient.query.mockResolvedValueOnce({ rows: [] });
+        // insert attempt
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeAttemptRow({ id: '501', attempt_number: 1, status: 'IN_PROGRESS' })],
+        });
+        // fetch questions
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeQuestionRow({ id: '101' })],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.attempt).toMatchObject({
+        id: '501',
+        assessmentId: '1',
+        traineeId: '20',
+        attemptNumber: 1,
+        status: 'IN_PROGRESS',
+      });
+      expect(res.body.data.attempt.expiresAt).toBeTruthy();
+      expect(res.body.data.questions).toHaveLength(1);
+      // Answer key MUST be stripped for trainee!
+      expect(res.body.data.questions[0].correctOption).toBeUndefined();
+      expect(res.body.data.questions[0].explanation).toBeUndefined();
+    });
+
+    it('forbids TRAINER from starting attempts (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('rejects unenrolled trainee (403 NOT_ENROLLED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', status: 'PUBLISHED', course_status: 'PUBLISHED' })],
+      });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check returns empty
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('NOT_ENROLLED');
+    });
+
+    it('rejects if assessment deadline has passed (409 DEADLINE_PASSED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      const pastDeadline = new Date(Date.now() - 3600 * 1000).toISOString();
+      // findAssessmentWithCourse
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAssessmentRow({
+            id: '1',
+            status: 'PUBLISHED',
+            course_status: 'PUBLISHED',
+            deadline_at: pastDeadline,
+          }),
+        ],
+      });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('DEADLINE_PASSED');
+    });
+
+    it('blocks starting attempt if active non-expired attempt is already IN_PROGRESS (409 ATTEMPT_IN_PROGRESS)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // findAssessmentWithCourse (duration 30 mins)
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAssessmentRow({ id: '1', status: 'PUBLISHED', course_status: 'PUBLISHED', duration_minutes: 30 })],
+      });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // withTransaction
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // query existing attempts: active ongoing attempt started 5 mins ago
+        const recentStart = new Date(Date.now() - 5 * 60 * 1000);
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '501', status: 'IN_PROGRESS', started_at: recentStart, attempt_number: 1 }],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ATTEMPT_IN_PROGRESS');
+    });
+
+    it('automatically marks timed-out attempt as EXPIRED and starts a retry if within maxAttempts', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // findAssessmentWithCourse (max_attempts = 2, duration = 30 mins)
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAssessmentRow({
+            id: '1',
+            status: 'PUBLISHED',
+            course_status: 'PUBLISHED',
+            max_attempts: 2,
+            duration_minutes: 30,
+          }),
+        ],
+      });
+      // verifyCourseEnrollment: course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // verifyCourseEnrollment: enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // withTransaction
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // attempt 1 started 2 hours ago (timed out!)
+        const oldStart = new Date(Date.now() - 120 * 60 * 1000);
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '501', status: 'IN_PROGRESS', started_at: oldStart, attempt_number: 1 }],
+        });
+        // update status to EXPIRED
+        mockClient.query.mockResolvedValueOnce({ rowCount: 1 });
+        // insert attempt 2
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeAttemptRow({ id: '502', attempt_number: 2, status: 'IN_PROGRESS' })],
+        });
+        // questions query
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeQuestionRow({ id: '101' })],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.attempt.attemptNumber).toBe(2);
+    });
+
+    it('rejects starting attempt when max attempts reached (409 ATTEMPT_LIMIT_REACHED)', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // max_attempts = 1
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          makeAssessmentRow({
+            id: '1',
+            status: 'PUBLISHED',
+            course_status: 'PUBLISHED',
+            max_attempts: 1,
+            duration_minutes: 30,
+          }),
+        ],
+      });
+      // course check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainer_id: '10', title: 'Intro to Atmospheric Science', status: 'PUBLISHED' }],
+      });
+      // enrollment check
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '900', course_id: '100', trainee_id: '20', status: 'ACTIVE' }],
+      });
+      // withTransaction
+      withTransaction.mockImplementationOnce(async (callback) => {
+        const mockClient = { query: vi.fn() };
+        // already submitted 1 attempt!
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '501', status: 'GRADED', started_at: new Date(), attempt_number: 1 }],
+        });
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/assessments/1/attempts')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ATTEMPT_LIMIT_REACHED');
+    });
+  });
+
+  describe('GET /api/v1/attempts/:attemptId (Get Attempt / Countdown Timer)', () => {
+    it('returns attempt status and remainingSeconds for trainee owner', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // attempt started 10 minutes ago, duration 30 minutes (20 minutes remaining!)
+      const startedAt = new Date(Date.now() - 10 * 60 * 1000);
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', trainee_id: '20', status: 'IN_PROGRESS', started_at: startedAt, duration_minutes: 30 })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/501')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.attempt.id).toBe('501');
+      expect(res.body.data.attempt.status).toBe('IN_PROGRESS');
+      expect(res.body.data.remainingSeconds).toBeGreaterThan(1000);
+      expect(res.body.data.remainingSeconds).toBeLessThanOrEqual(1200);
+    });
+
+    it('automatically transitions status to EXPIRED if time has run out when fetching', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      // attempt started 45 minutes ago with 30 min duration (15 mins expired!)
+      const startedAt = new Date(Date.now() - 45 * 60 * 1000);
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', trainee_id: '20', status: 'IN_PROGRESS', started_at: startedAt, duration_minutes: 30 })],
+      });
+      // update to EXPIRED
+      executeQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/501')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.attempt.status).toBe('EXPIRED');
+      expect(res.body.data.remainingSeconds).toBe(0);
+    });
+
+    it('forbids another trainee from viewing an attempt they do not own (403 FORBIDDEN)', async () => {
+      mockAuthUser({ id: '99', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', trainee_id: '20' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/501')
+        .set('Authorization', `Bearer ${makeToken('99')}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('allows course owner trainer to view student attempt', async () => {
+      mockAuthUser({ id: '10', role: 'TRAINER' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [makeAttemptRow({ id: '501', trainee_id: '20', course_trainer_id: '10', status: 'EXPIRED' })],
+      });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/501')
+        .set('Authorization', `Bearer ${makeToken('10')}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.attempt.id).toBe('501');
+    });
+
+    it('returns 404 ATTEMPT_NOT_FOUND when attempt does not exist', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+      executeQuery.mockResolvedValueOnce({ rows: [] });
+
+      const res = await request(app)
+        .get('/api/v1/attempts/999')
+        .set('Authorization', `Bearer ${makeToken('20')}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('ATTEMPT_NOT_FOUND');
     });
   });
 });

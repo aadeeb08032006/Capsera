@@ -1,6 +1,12 @@
 import { withTransaction } from '../../config/db.js';
 import { AppError } from '../../shared/AppError.js';
-import { ASSESSMENT_STATUSES, ENROLLMENT_STATUSES, ROLES } from '../../shared/constants.js';
+import {
+  ASSESSMENT_STATUSES,
+  ATTEMPT_STATUSES,
+  COURSE_STATUSES,
+  ENROLLMENT_STATUSES,
+  ROLES,
+} from '../../shared/constants.js';
 import {
   findAssessmentWithCourse,
   hasAssessmentAttempts,
@@ -54,6 +60,72 @@ export function mapQuestionRow(row, role) {
     ...(isPrivileged ? { correctOption: row.correct_option } : {}),
     ...(isPrivileged ? { explanation: row.explanation ?? null } : {}),
     points: Number(row.points),
+    createdAt: toIsoString(row.created_at),
+    updatedAt: toIsoString(row.updated_at),
+  };
+}
+
+export function calculateAttemptExpiry(startedAt, durationMinutes, deadlineAt) {
+  const startDate = startedAt instanceof Date ? startedAt : new Date(startedAt);
+  let expiresAt = null;
+
+  if (durationMinutes !== null && durationMinutes !== undefined) {
+    expiresAt = new Date(startDate.getTime() + Number(durationMinutes) * 60 * 1000);
+  }
+
+  if (deadlineAt) {
+    const deadlineDate = deadlineAt instanceof Date ? deadlineAt : new Date(deadlineAt);
+    if (!expiresAt || deadlineDate < expiresAt) {
+      expiresAt = deadlineDate;
+    }
+  }
+
+  return expiresAt;
+}
+
+export function calculateRemainingSeconds(expiresAt, now = new Date()) {
+  if (!expiresAt) return null;
+  const targetDate = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+  const diffMs = targetDate.getTime() - now.getTime();
+  return Math.max(0, Math.floor(diffMs / 1000));
+}
+
+export function mapAttemptRow(row, assessment = null) {
+  const startedAt = toIsoString(row.started_at);
+  const submittedAt = toIsoString(row.submitted_at);
+  const gradedAt = toIsoString(row.graded_at);
+  const durationMinutes =
+    row.duration_minutes !== undefined && row.duration_minutes !== null
+      ? Number(row.duration_minutes)
+      : assessment?.duration_minutes !== undefined && assessment?.duration_minutes !== null
+        ? Number(assessment.duration_minutes)
+        : assessment?.durationMinutes ?? null;
+  const deadlineAt = row.deadline_at ?? assessment?.deadline_at ?? assessment?.deadlineAt ?? null;
+  const expiresAt = calculateAttemptExpiry(row.started_at, durationMinutes, deadlineAt);
+
+  return {
+    id: String(row.id),
+    assessmentId: String(row.assessment_id),
+    traineeId: String(row.trainee_id),
+    attemptNumber: Number(row.attempt_number),
+    status: row.status,
+    startedAt,
+    expiresAt: expiresAt ? toIsoString(expiresAt) : null,
+    ...(durationMinutes !== null ? { durationMinutes } : {}),
+    ...(submittedAt ? { submittedAt } : {}),
+    ...(gradedAt ? { gradedAt } : {}),
+    ...(row.earned_points !== null && row.earned_points !== undefined
+      ? { earnedPoints: Number(row.earned_points) }
+      : {}),
+    ...(row.total_points !== null && row.total_points !== undefined
+      ? { totalPoints: Number(row.total_points) }
+      : {}),
+    ...(row.score_percentage !== null && row.score_percentage !== undefined
+      ? { scorePercentage: Number(row.score_percentage) }
+      : {}),
+    ...(row.is_passed !== null && row.is_passed !== undefined
+      ? { isPassed: Boolean(row.is_passed) }
+      : {}),
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
   };
@@ -626,4 +698,251 @@ export async function deleteQuestion(assessmentId, questionId, actor) {
   );
 
   return { deleted: true, id: String(questionId) };
+}
+
+/**
+ * Initiate an attempt session for an assessment (TRAINEE only).
+ * Handles atomic checks: enrollment, course published, deadline, stale expiry, attempt limits.
+ */
+export async function startAttempt(assessmentId, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only enrolled trainees can start assessment attempts');
+  }
+
+  const assessment = await findAssessmentWithCourse(assessmentId);
+
+  if (assessment.status !== ASSESSMENT_STATUSES.PUBLISHED) {
+    throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
+  }
+
+  if (assessment.course_status !== COURSE_STATUSES.PUBLISHED) {
+    throw new AppError(409, 'COURSE_NOT_PUBLISHED', 'Course is not published');
+  }
+
+  await verifyCourseEnrollment(assessment.course_id, actor.id, {
+    requirePublishedCourse: true,
+    allowedStatuses: [ENROLLMENT_STATUSES.ACTIVE, ENROLLMENT_STATUSES.COMPLETED],
+  });
+
+  if (assessment.deadline_at) {
+    const deadlineDate = new Date(assessment.deadline_at);
+    if (new Date() > deadlineDate) {
+      throw new AppError(409, 'DEADLINE_PASSED', 'Assessment submission deadline has passed');
+    }
+  }
+
+  return await withTransaction(async (client) => {
+    // Lock attempts for this trainee on this assessment to prevent concurrent race conditions
+    const existingRes = await runSql(
+      `SELECT id, status, started_at, attempt_number
+       FROM assessment_attempts
+       WHERE assessment_id = $1 AND trainee_id = $2
+       ORDER BY attempt_number ASC
+       FOR UPDATE`,
+      [String(assessmentId), String(actor.id)],
+      client,
+    );
+
+    const existingAttempts = existingRes.rows;
+
+    for (const att of existingAttempts) {
+      if (att.status === ATTEMPT_STATUSES.IN_PROGRESS) {
+        const expiresAt = calculateAttemptExpiry(
+          att.started_at,
+          assessment.duration_minutes,
+          assessment.deadline_at,
+        );
+        const now = new Date();
+        if (expiresAt && now > expiresAt) {
+          // Attempt has timed out: automatically expire it!
+          await runSql(
+            `UPDATE assessment_attempts
+             SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1`,
+            [String(att.id)],
+            client,
+          );
+          att.status = ATTEMPT_STATUSES.EXPIRED;
+        } else {
+          // Attempt is still actively running!
+          throw new AppError(
+            409,
+            'ATTEMPT_IN_PROGRESS',
+            'An attempt is already in progress for this assessment',
+          );
+        }
+      }
+    }
+
+    if (existingAttempts.length >= Number(assessment.max_attempts)) {
+      throw new AppError(
+        409,
+        'ATTEMPT_LIMIT_REACHED',
+        'Maximum number of attempts reached for this assessment',
+      );
+    }
+
+    const nextAttemptNumber = existingAttempts.length + 1;
+
+    const insertSql = `
+      INSERT INTO assessment_attempts (
+        assessment_id,
+        trainee_id,
+        attempt_number,
+        status,
+        started_at
+      ) VALUES ($1, $2, $3, 'IN_PROGRESS', CURRENT_TIMESTAMP)
+      RETURNING *
+    `;
+
+    const insertRes = await runSql(
+      insertSql,
+      [String(assessmentId), String(actor.id), nextAttemptNumber],
+      client,
+    );
+
+    const questionsSql = `
+      SELECT
+        id,
+        assessment_id,
+        question_order,
+        question_text,
+        option_a,
+        option_b,
+        option_c,
+        option_d,
+        points,
+        created_at,
+        updated_at
+      FROM questions
+      WHERE assessment_id = $1
+      ORDER BY question_order ASC
+    `;
+
+    const questionsRes = await runSql(questionsSql, [String(assessmentId)], client);
+
+    return {
+      attempt: mapAttemptRow(insertRes.rows[0], assessment),
+      questions: questionsRes.rows.map((row) => mapQuestionRow(row, ROLES.TRAINEE)),
+    };
+  });
+}
+
+/**
+ * Fetch a specific attempt by ID with timer countdown and answer key isolation.
+ */
+export async function getAttemptById(attemptId, actor) {
+  const attemptSql = `
+    SELECT
+      att.*,
+      a.course_id,
+      a.title AS assessment_title,
+      a.duration_minutes,
+      a.deadline_at,
+      a.status AS assessment_status,
+      c.trainer_id AS course_trainer_id,
+      c.title AS course_title
+    FROM assessment_attempts att
+    JOIN assessments a ON a.id = att.assessment_id
+    JOIN courses c ON c.id = a.course_id
+    WHERE att.id = $1
+  `;
+
+  const attemptRes = await runSql(attemptSql, [String(attemptId)]);
+  if (!attemptRes.rows.length) {
+    throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Attempt not found');
+  }
+
+  const att = attemptRes.rows[0];
+
+  if (actor.role === ROLES.TRAINEE) {
+    if (String(att.trainee_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'Access denied to this attempt');
+    }
+  } else if (actor.role === ROLES.TRAINER) {
+    if (actor.role !== ROLES.ADMIN && String(att.course_trainer_id) !== String(actor.id)) {
+      throw new AppError(403, 'FORBIDDEN', 'You can only view attempts for your own courses');
+    }
+  } else if (actor.role !== ROLES.ADMIN) {
+    throw new AppError(403, 'FORBIDDEN', 'Access denied');
+  }
+
+  if (att.status === ATTEMPT_STATUSES.IN_PROGRESS) {
+    const expiresAt = calculateAttemptExpiry(
+      att.started_at,
+      att.duration_minutes,
+      att.deadline_at,
+    );
+    const now = new Date();
+    if (expiresAt && now > expiresAt) {
+      await runSql(
+        `UPDATE assessment_attempts
+         SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [String(att.id)],
+      );
+      att.status = ATTEMPT_STATUSES.EXPIRED;
+      return {
+        attempt: mapAttemptRow(att),
+        remainingSeconds: 0,
+      };
+    }
+
+    return {
+      attempt: mapAttemptRow(att),
+      remainingSeconds: calculateRemainingSeconds(expiresAt, now),
+    };
+  }
+
+  if (att.status === ATTEMPT_STATUSES.GRADED || att.status === ATTEMPT_STATUSES.SUBMITTED) {
+    const answersSql = `
+      SELECT
+        ans.id,
+        ans.attempt_id,
+        ans.question_id,
+        ans.selected_option,
+        ans.is_correct,
+        ans.points_awarded,
+        q.question_text,
+        q.option_a,
+        q.option_b,
+        q.option_c,
+        q.option_d,
+        q.correct_option,
+        q.explanation,
+        q.points
+      FROM assessment_attempt_answers ans
+      JOIN questions q ON q.id = ans.question_id
+      WHERE ans.attempt_id = $1
+      ORDER BY q.question_order ASC
+    `;
+
+    const answersRes = await runSql(answersSql, [String(attemptId)]);
+
+    return {
+      attempt: mapAttemptRow(att),
+      answers: answersRes.rows.map((row) => ({
+        id: String(row.id),
+        attemptId: String(row.attempt_id),
+        questionId: String(row.question_id),
+        selectedOption: row.selected_option ?? null,
+        isCorrect: row.is_correct ?? null,
+        pointsAwarded: Number(row.points_awarded ?? 0),
+        questionText: row.question_text,
+        optionA: row.option_a,
+        optionB: row.option_b,
+        optionC: row.option_c,
+        optionD: row.option_d,
+        correctOption: row.correct_option,
+        explanation: row.explanation ?? null,
+        points: Number(row.points),
+      })),
+    };
+  }
+
+  // For EXPIRED attempts
+  return {
+    attempt: mapAttemptRow(att),
+    remainingSeconds: 0,
+  };
 }
