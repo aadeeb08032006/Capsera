@@ -28,8 +28,8 @@ All Member 3 backend code follows the team conventions established on `main`:
 | **Milestone 4** | Attempt initiation (`POST /assessments/:assessmentId/attempts`), deadline/attempt-cap checks, stale expiry sweep + tests | **Done** (`feature/assessments`) |
 | **Milestone 5** | Atomic auto-grading (`POST /attempts/:attemptId/submit`), scorecards (`GET /attempts/me`, `GET /attempts/:attemptId`), course results (`GET /courses/:courseId/results`), and completion rule check + tests | **Done** (`feature/assessments`) |
 | **Milestone 6** | Course feedback upsert & privacy-safe summary (`POST`/`GET /courses/:courseId/feedback`) + tests | **Done** (`feature/assessments`) |
-| **Milestone 7** | Frontend Trainer UI (`client/src/features/assessments/`): assessment & MCQ builder + course results view | Pending |
-| **Milestone 8** | Frontend Trainee UI: quiz player with timer, graded scorecard review, feedback widget + live PostgreSQL E2E check | Pending |
+| **Milestone 7** | Frontend Trainer UI (`client/src/features/assessments/`): assessment & MCQ builder + course results view | **Done** (`feature/assessments`) |
+| **Milestone 8** | Frontend Trainee UI: quiz player with timer, graded scorecard review, feedback widget + live PostgreSQL E2E check | **Done** (`feature/assessments`) |
 
 ---
 
