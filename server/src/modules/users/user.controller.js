@@ -1,7 +1,7 @@
 import { AppError } from '../../shared/AppError.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import { sendPaginated, sendSuccess } from '../../shared/response.js';
-import { listUsers, updateUserRole, updateUserStatus } from './user.service.js';
+import { listUsers, resetUserPassword, updateUserRole, updateUserStatus } from './user.service.js';
 import {
   getUsersQuerySchema,
   getValidationMessage,
@@ -45,4 +45,11 @@ export const updateRole = asyncHandler(async (req, res) => {
     adminUser: req.user,
   });
   return sendSuccess(res, { user });
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { userId } = validate(userIdParamSchema, req.params);
+  const result = await resetUserPassword({ targetUserId: userId, adminUser: req.user });
+  return sendSuccess(res, result);
 });

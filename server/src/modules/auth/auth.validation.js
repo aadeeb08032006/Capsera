@@ -7,7 +7,7 @@ const emailSchema = z
   .max(255, 'Must be at most 255 characters')
   .pipe(z.email({ message: 'Must be a valid email address' }));
 
-const passwordSchema = z
+export const passwordSchema = z
   .string()
   .refine((password) => Buffer.byteLength(password, 'utf8') >= 8, {
     message: 'Must be at least 8 bytes',
@@ -39,6 +39,17 @@ export const loginSchema = z
     password: z.string(),
   })
   .strict();
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: passwordSchema,
+  })
+  .strict()
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    path: ['newPassword'],
+    message: 'New password must differ from the current password',
+  });
 
 export function getValidationMessage(error) {
   return error.issues

@@ -1,4 +1,7 @@
+import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 import { executeQuery, withTransaction } from '../../config/db.js';
+import { env } from '../../config/env.js';
 import { AppError } from '../../shared/AppError.js';
 import { mapAdminUser } from './mapAdminUser.js';
 
@@ -61,6 +64,63 @@ const ALLOWED_STATUS_TRANSITIONS = {
     ACTIVE: 'USER_REACTIVATED',
   },
 };
+
+const TEMP_PASSWORD_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const TEMP_PASSWORD_DIGITS = '0123456789';
+const TEMP_PASSWORD_CHARACTERS = `${TEMP_PASSWORD_LETTERS}${TEMP_PASSWORD_DIGITS}`;
+
+export function generateTemporaryPassword() {
+  const characters = [
+    TEMP_PASSWORD_LETTERS[randomInt(TEMP_PASSWORD_LETTERS.length)],
+    TEMP_PASSWORD_DIGITS[randomInt(TEMP_PASSWORD_DIGITS.length)],
+    ...Array.from({ length: 10 }, () =>
+      TEMP_PASSWORD_CHARACTERS[randomInt(TEMP_PASSWORD_CHARACTERS.length)],
+    ),
+  ];
+
+  for (let index = characters.length - 1; index > 0; index -= 1) {
+    const swapIndex = randomInt(index + 1);
+    [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+  }
+  return characters.join('');
+}
+
+export async function resetUserPassword({ targetUserId, adminUser }) {
+  const temporaryPassword = generateTemporaryPassword();
+
+  const user = await withTransaction(async (client) => {
+    const result = await client.query(
+      `SELECT id, full_name, email, role, status, approved_by, approved_at, created_at
+       FROM users
+       WHERE id = $1
+       FOR UPDATE`,
+      [targetUserId],
+    );
+    const target = result.rows[0];
+
+    if (!target) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+    if (String(adminUser.id) === String(targetUserId) || target.role === 'ADMIN') {
+      throw new AppError(403, 'FORBIDDEN', 'An admin cannot reset their own password or another admin password');
+    }
+    if (target.status !== 'ACTIVE') {
+      throw new AppError(409, 'PASSWORD_RESET_NOT_ALLOWED', 'Password reset is only allowed for ACTIVE users');
+    }
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, env.bcryptCost);
+    const updated = await client.query(
+      `UPDATE users
+       SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, full_name, email, role, status, approved_by, approved_at, created_at`,
+      [passwordHash, targetUserId],
+    );
+
+    // Migration 006 excludes password-reset events; adding one requires an approved migration.
+    return mapAdminUser(updated.rows[0]);
+  });
+
+  return { temporaryPassword, user };
+}
 
 export async function updateUserStatus({ targetUserId, newStatus, reason, adminUser }) {
   if (String(adminUser.id) === String(targetUserId)) {

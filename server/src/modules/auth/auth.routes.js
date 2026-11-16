@@ -2,7 +2,7 @@ import express, { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate } from '../../middleware/authenticate.js';
 import { sendError } from '../../shared/response.js';
-import { getCurrentUser, login, logout, signup } from './auth.controller.js';
+import { changePassword, getCurrentUser, login, logout, signup } from './auth.controller.js';
 
 const router = Router();
 
@@ -28,5 +28,6 @@ router.post('/signup', createAuthRateLimiter(), signup);
 router.post('/login', createAuthRateLimiter(), login);
 router.post('/logout', authenticate, logout);
 router.get('/me', authenticate, getCurrentUser);
+router.post('/change-password', createAuthRateLimiter(), authenticate, changePassword);
 
 export default router;

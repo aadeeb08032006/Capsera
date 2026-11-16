@@ -69,48 +69,83 @@ capsera/
 - **Node.js** `>= 18.x`
 - **PostgreSQL** `>= 15.x`
 
-### 1. Configure Environment Variables
-Copy `.env.example` to `.env` (or into `server/.env` and `client/.env`) and update your local PostgreSQL credentials (`DB_PORT=5432`, `DB_USER=postgres`, `DB_NAME=capsera_db`):
-```bash
-cp .env.example .env
-cp server/.env.example server/.env
-cp client/.env.example client/.env
-```
-
-### 2. Create Local PostgreSQL Database
-Ensure your local PostgreSQL service is running, then create the canonical `capsera_db` database:
+### 1. Install PostgreSQL and create the database
+Install PostgreSQL 15+ using your platform's package manager or installer, ensure `psql` and `createdb` are available, and start the service. Then create the local database. The default local role is `postgres`; use `DB_USER` and `DB_PASSWORD` in `server/.env` to match your local PostgreSQL authentication setup.
 ```bash
 createdb -U postgres capsera_db
 ```
-Or via `psql`:
-```sql
-CREATE DATABASE capsera_db ENCODING 'UTF8';
+
+### 2. Apply migrations in order
+Apply these to an empty local database after the team has approved the schema migrations. If using `DATABASE_URL`, pass that connection string to `psql` instead of the host/user flags.
+```bash
+psql -h 127.0.0.1 -p 5432 -U postgres -d capsera_db -v ON_ERROR_STOP=1 \
+	-f database/migrations/001_create_users_and_profiles.sql \
+	-f database/migrations/002_create_skills_and_competency.sql \
+	-f database/migrations/003_create_courses_lessons_and_enrollments.sql \
+	-f database/migrations/004_create_assessments_attempts_and_feedback.sql \
+	-f database/migrations/005_create_certificates_and_announcements.sql \
+	-f database/migrations/006_create_audit_logs.sql
 ```
 
-### 3. Install Dependencies
+### 3. Configure environment variables
+```bash
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+```
+Set PostgreSQL credentials in `server/.env`. `DATABASE_URL`, when provided, takes precedence over `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. Set `JWT_SECRET` to a random secret of at least 32 characters and configure `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_FULL_NAME` for the initial admin.
+Set `DEMO_PASSWORD` to a development-only password that meets the signup policy before running the demo seed.
+
+### 4. Install dependencies
 ```bash
 npm run install:all
 ```
 
-### 4. Run Backend and Frontend
-In two terminals:
+### 5. Seed the admin account
 ```bash
-# Terminal 1: Start Express API on http://localhost:5000/api/v1
-npm run dev:server
+cd server && npm run seed:admin
+```
 
-# Terminal 2: Start Vite React client on http://localhost:5173
+### 6. Seed synthetic demo accounts (optional)
+```bash
+cd server && npm run seed:demo
+```
+This command refuses to run when `NODE_ENV=production` and seeds nine synthetic users with `@example.com` addresses.
+
+### 7. Run the server and client
+In separate terminals from the repository root:
+```bash
+npm run dev:server
 npm run dev:client
 ```
 
-### 5. Verify Health Endpoint
-- API health check: `GET http://localhost:5000/api/v1/health`
-- API + PostgreSQL connectivity check: `GET http://localhost:5000/api/v1/health?db=true`
+### 8. Run checks
+```bash
+cd server
+npm test
+cd ../client
+npm run build
+```
+Health endpoints: `GET http://localhost:5000/api/v1/health` and `GET http://localhost:5000/api/v1/health?db=true`.
 
 ---
 
 ## 5. Documentation & Governance
 
 Before implementing any module endpoints or SQL migrations, review and update:
-1. [docs/DECISIONS.md](./docs/DECISIONS.md) — Approve `ADR-002` (PostgreSQL migration + proposed PRD v1.0 amendments) and resolve open team choices (`OPEN-001` through `OPEN-006`).
+1. [docs/DECISIONS.md](./docs/DECISIONS.md) — Review `ADR-002` (PostgreSQL migration + proposed PRD v1.0 amendments) and resolve applicable open team choices.
 2. [docs/API_CONTRACT.md](./docs/API_CONTRACT.md) — Specify request/response payloads for your owned endpoints.
 3. [docs/DATA_MODEL.md](./docs/DATA_MODEL.md) — Finalize table columns and foreign key names before creating SQL files in `database/migrations/`.
+
+## 6. Using authentication in your module
+
+Protect a trainer-only endpoint by applying `authenticate` before `requireRole`:
+```js
+import { Router } from 'express';
+import { authenticate } from '../../middleware/authenticate.js';
+import { requireRole } from '../../middleware/requireRole.js';
+
+const router = Router();
+router.post('/', authenticate, requireRole('TRAINER'), createCourseHandler);
+```
+
+After `authenticate`, `req.user` contains `id` (string), `fullName`, `email`, `role`, `status`, and `createdAt`. Do not trust a role or owner ID from request data; use `req.user` and enforce ownership in the service. Errors use `{ success: false, error: { code, message } }`. Common codes are `401 UNAUTHENTICATED`, `403 FORBIDDEN`, `ACCOUNT_PENDING`, `ACCOUNT_REJECTED`, or `ACCOUNT_SUSPENDED`, `400 VALIDATION_ERROR`, resource-specific `404 *_NOT_FOUND`, conflict-specific `409` codes, and `429 RATE_LIMITED`.
