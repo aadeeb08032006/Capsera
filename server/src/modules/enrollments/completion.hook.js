@@ -1,97 +1,65 @@
-import { runSql, calculateCourseProgress } from './enrollment.helpers.js';
-import { ENROLLMENT_STATUSES } from '../../shared/constants.js';
+import {
+  evaluateCourseCompletionEligibility,
+  issueCertificateIfEligible,
+} from '../certificates/certificates.service.js';
 
 /**
- * MEMBER 3 COMPLETION HOOK:
- * Evaluates whether all course completion requirements are satisfied:
- * 1. All lessons for the course are completed (totalLessons > 0 && completedLessons >= totalLessons).
- * 2. Any required, published assessments for the course (if any) have been passed by the trainee.
- *
- * Integration Note:
- * Member 3's assessment submission and grading engine has not been fully implemented in the repo yet
- * (only assessment.auth.js and assessment.validation.js are present).
- * This hook queries the database tables (`assessments` and `assessment_attempts`) directly
- * as defined in Migration 004. Once Member 3 exports a service-level completion function,
- * this hook can seamlessly delegate to it.
+ * Evaluate whether all course completion requirements are satisfied for a trainee
+ * by delegating to the canonical certificate eligibility service (PRD Sections 6.6 & 6.7):
+ * 1. Enrollment exists with status ACTIVE or COMPLETED (not CANCELLED).
+ * 2. Course has at least one lesson (totalLessons > 0) and all lessons are completed.
+ * 3. Every required, published assessment has at least one GRADED passing attempt.
  *
  * @param {string|number} courseId
  * @param {string|number} enrollmentId
  * @param {string|number} traineeId
  * @param {object|null} client - Optional transaction client
- * @returns {Promise<{ isComplete: boolean, reason?: string, progress: object }>}
+ * @returns {Promise<{ isComplete: boolean, reason: string, progress: object, eligibility: object }>}
  */
 export async function evaluateCourseCompletion(courseId, enrollmentId, traineeId, client = null) {
-  // 1. Check lessons progress
-  const progress = await calculateCourseProgress(courseId, enrollmentId, client);
-  if (progress.totalLessons === 0 || progress.completedLessons < progress.totalLessons) {
-    return { isComplete: false, reason: 'NOT_ALL_LESSONS_COMPLETED', progress };
-  }
+  const eligibility = await evaluateCourseCompletionEligibility(traineeId, courseId, { client });
+  const totalLessons = eligibility.totalLessons;
+  const completedLessons = eligibility.completedLessons;
+  const progressPercentage =
+    totalLessons > 0
+      ? Math.min(100, Math.max(0, Math.round((completedLessons / totalLessons) * 100)))
+      : 0;
 
-  // 2. Member 3 Hook: Check required published assessments
-  const assessmentRes = await runSql(
-    `SELECT id, title
-     FROM assessments
-     WHERE course_id = $1
-       AND status = 'PUBLISHED'
-       AND is_required = TRUE`,
-    [String(courseId)],
-    client,
-  );
-
-  const requiredAssessments = assessmentRes?.rows ?? [];
-  for (const assessment of requiredAssessments) {
-    const attemptRes = await runSql(
-      `SELECT id
-       FROM assessment_attempts
-       WHERE assessment_id = $1
-         AND trainee_id = $2
-         AND is_passed = TRUE
-       LIMIT 1`,
-      [String(assessment.id), String(traineeId)],
-      client,
-    );
-
-    if (!attemptRes?.rows?.length) {
-      return {
-        isComplete: false,
-        reason: 'REQUIRED_ASSESSMENT_NOT_PASSED',
-        requiredAssessmentId: String(assessment.id),
-        progress,
-      };
-    }
-  }
-
-  return { isComplete: true, progress };
+  return {
+    isComplete: eligibility.eligible,
+    reason: eligibility.reason,
+    progress: {
+      completedLessons,
+      totalLessons,
+      progressPercentage,
+    },
+    eligibility,
+  };
 }
 
 /**
- * Evaluate completion rules and update enrollment to COMPLETED if all criteria are met.
+ * Evaluate canonical completion rules and, when eligible, atomically transition
+ * the enrollment to COMPLETED and issue a certificate + CERTIFICATE_ISSUED audit
+ * event inside the active transaction.
+ *
+ * @param {string|number} courseId
+ * @param {string|number} enrollmentId
+ * @param {string|number} traineeId
+ * @param {object|null} client - Optional transaction client
  */
-export async function checkAndApplyCourseCompletion(courseId, enrollmentId, traineeId, client = null) {
-  const evaluation = await evaluateCourseCompletion(courseId, enrollmentId, traineeId, client);
-
-  if (evaluation.isComplete) {
-    const updateRes = await runSql(
-      `UPDATE enrollments
-       SET status = $1,
-           completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND status = $3
-       RETURNING id, trainee_id, course_id, status, enrolled_at, completed_at, cancelled_at, updated_at`,
-      [ENROLLMENT_STATUSES.COMPLETED, String(enrollmentId), ENROLLMENT_STATUSES.ACTIVE],
-      client,
-    );
-
-    return {
-      isComplete: true,
-      enrollment: updateRes?.rows?.[0] ?? null,
-      progress: evaluation.progress,
-    };
-  }
+export async function checkAndApplyCourseCompletion(
+  courseId,
+  enrollmentId,
+  traineeId,
+  client = null,
+) {
+  const issuance = await issueCertificateIfEligible(traineeId, courseId, { client });
+  const isComplete = issuance.issued || issuance.reason === 'ALREADY_ISSUED';
 
   return {
-    isComplete: false,
-    reason: evaluation.reason,
-    progress: evaluation.progress,
+    isComplete,
+    issued: issuance.issued,
+    reason: issuance.reason,
+    certificate: issuance.certificate,
   };
 }

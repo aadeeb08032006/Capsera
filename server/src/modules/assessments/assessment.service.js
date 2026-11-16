@@ -14,6 +14,7 @@ import {
   verifyCourseEnrollment,
   verifyCourseOwnership,
 } from './assessment.auth.js';
+import { issueCertificateIfEligible } from '../certificates/certificates.service.js';
 
 function toIsoString(value) {
   if (value === null || value === undefined) {
@@ -948,87 +949,18 @@ export async function getAttemptById(attemptId, actor) {
 }
 
 /**
- * Evaluates course completion criteria for a trainee inside an active transaction.
- * Transitions enrollment to COMPLETED if:
- * 1. Trainee has an ACTIVE enrollment.
- * 2. All lessons in the course (if any) have been marked completed in lesson_progress.
- * 3. All PUBLISHED assessments with is_required = TRUE have at least one GRADED attempt with is_passed = TRUE.
+ * Evaluates canonical course completion criteria for a trainee inside an active
+ * transaction by delegating to `issueCertificateIfEligible`:
+ * 1. Enrollment exists with status ACTIVE or COMPLETED (not CANCELLED).
+ * 2. Course has at least one lesson (totalLessons > 0) and all lessons are completed.
+ * 3. All PUBLISHED assessments with is_required = TRUE have at least one GRADED passing attempt.
+ *
+ * When eligible, atomically transitions ACTIVE enrollment to COMPLETED and issues
+ * one certificate + one CERTIFICATE_ISSUED audit event using the active transaction client.
  */
-export async function checkAndTriggerCourseCompletion(courseId, traineeId, client) {
-  const enrollmentRes = await runSql(
-    `SELECT id, status
-     FROM enrollments
-     WHERE course_id = $1 AND trainee_id = $2 AND status = 'ACTIVE'
-     LIMIT 1
-     FOR UPDATE`,
-    [String(courseId), String(traineeId)],
-    client,
-  );
-
-  if (!enrollmentRes.rows.length) {
-    return false;
-  }
-  const enrollment = enrollmentRes.rows[0];
-
-  // Check lesson completion
-  const lessonsRes = await runSql(
-    `SELECT COUNT(*)::int AS total FROM lessons WHERE course_id = $1`,
-    [String(courseId)],
-    client,
-  );
-  const totalLessons = Number(lessonsRes.rows[0]?.total || 0);
-
-  if (totalLessons > 0) {
-    const progressRes = await runSql(
-      `SELECT COUNT(DISTINCT lesson_id)::int AS completed
-       FROM lesson_progress
-       WHERE course_id = $1 AND enrollment_id = $2`,
-      [String(courseId), String(enrollment.id)],
-      client,
-    );
-    const completedLessons = Number(progressRes.rows[0]?.completed || 0);
-    if (completedLessons < totalLessons) {
-      return false;
-    }
-  }
-
-  // Check required published assessments
-  const reqAssessmentsRes = await runSql(
-    `SELECT id FROM assessments WHERE course_id = $1 AND status = 'PUBLISHED' AND is_required = TRUE`,
-    [String(courseId)],
-    client,
-  );
-  const requiredAssessments = reqAssessmentsRes.rows;
-
-  if (requiredAssessments.length > 0) {
-    const passedRes = await runSql(
-      `SELECT COUNT(DISTINCT assessment_id)::int AS passed_count
-       FROM assessment_attempts
-       WHERE trainee_id = $1
-         AND assessment_id IN (
-           SELECT id FROM assessments WHERE course_id = $2 AND status = 'PUBLISHED' AND is_required = TRUE
-         )
-         AND status = 'GRADED'
-         AND is_passed = TRUE`,
-      [String(traineeId), String(courseId)],
-      client,
-    );
-    const passedCount = Number(passedRes.rows[0]?.passed_count || 0);
-    if (passedCount < requiredAssessments.length) {
-      return false;
-    }
-  }
-
-  // Transition enrollment to COMPLETED
-  await runSql(
-    `UPDATE enrollments
-     SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-     WHERE id = $1`,
-    [String(enrollment.id)],
-    client,
-  );
-
-  return true;
+export async function checkAndTriggerCourseCompletion(courseId, traineeId, client = null) {
+  const result = await issueCertificateIfEligible(traineeId, courseId, { client });
+  return result.issued || result.reason === 'ALREADY_ISSUED';
 }
 
 /**
@@ -1036,12 +968,12 @@ export async function checkAndTriggerCourseCompletion(courseId, traineeId, clien
  * Performs atomic row locking, time limit checking with 30s grace period,
  * evaluation against question bank, scorecard generation, and course completion checking.
  */
-export async function submitAttempt(attemptId, payload, actor) {
+export async function submitAttempt(attemptId, payload, actor, { client = null } = {}) {
   if (actor.role !== ROLES.TRAINEE) {
     throw new AppError(403, 'FORBIDDEN', 'Only enrolled trainees can submit assessment attempts');
   }
 
-  return await withTransaction(async (client) => {
+  const executeSubmitWork = async (txClient) => {
     // 1. Lock the attempt row
     const attemptSql = `
       SELECT
@@ -1061,7 +993,7 @@ export async function submitAttempt(attemptId, payload, actor) {
       FOR UPDATE OF att
     `;
 
-    const attemptRes = await runSql(attemptSql, [String(attemptId)], client);
+    const attemptRes = await runSql(attemptSql, [String(attemptId)], txClient);
     if (!attemptRes.rows.length) {
       throw new AppError(404, 'ATTEMPT_NOT_FOUND', 'Attempt not found');
     }
@@ -1111,7 +1043,7 @@ export async function submitAttempt(attemptId, payload, actor) {
          SET status = 'EXPIRED', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
         [String(att.id)],
-        client,
+        txClient,
       );
       throw new AppError(
         409,
@@ -1138,7 +1070,7 @@ export async function submitAttempt(attemptId, payload, actor) {
       WHERE assessment_id = $1
       ORDER BY question_order ASC
     `;
-    const questionsRes = await runSql(questionsSql, [String(att.assessment_id)], client);
+    const questionsRes = await runSql(questionsSql, [String(att.assessment_id)], txClient);
     const questions = questionsRes.rows;
 
     if (!questions.length) {
@@ -1201,7 +1133,7 @@ export async function submitAttempt(attemptId, payload, actor) {
           isCorrect,
           pointsAwarded,
         ],
-        client,
+        txClient,
       );
 
       const ansRow = ansRes.rows[0];
@@ -1246,19 +1178,24 @@ export async function submitAttempt(attemptId, payload, actor) {
     const updatedRes = await runSql(
       updateAttemptSql,
       [earnedPoints, totalPoints, scorePercentage, isPassed, String(att.id)],
-      client,
+      txClient,
     );
 
-    // 5. Check and trigger course completion if passed
+    // 5. Check and trigger course completion + certificate issuance if passed
     if (isPassed) {
-      await checkAndTriggerCourseCompletion(att.course_id, att.trainee_id, client);
+      await checkAndTriggerCourseCompletion(att.course_id, att.trainee_id, txClient);
     }
 
     return {
       attempt: mapAttemptRow(updatedRes.rows[0], att),
       answers: gradedAnswers,
     };
-  });
+  };
+
+  if (client) {
+    return await executeSubmitWork(client);
+  }
+  return await withTransaction(executeSubmitWork);
 }
 
 /**

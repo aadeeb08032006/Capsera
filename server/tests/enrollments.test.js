@@ -15,9 +15,12 @@ vi.mock('../src/config/db.js', () => ({
 
 import app from '../src/app.js';
 import { env } from '../src/config/env.js';
-import { executeQuery } from '../src/config/db.js';
+import { executeQuery, withTransaction } from '../src/config/db.js';
 import { calculateCourseProgress } from '../src/modules/enrollments/progress.helpers.js';
-import { evaluateCourseCompletion } from '../src/modules/enrollments/completion.hook.js';
+import {
+  checkAndApplyCourseCompletion,
+  evaluateCourseCompletion,
+} from '../src/modules/enrollments/completion.hook.js';
 
 function makeToken(userId) {
   return jwt.sign({ sub: String(userId) }, env.jwtSecret, { expiresIn: '1h' });
@@ -73,6 +76,7 @@ function makeEnrollmentRow(overrides = {}) {
 describe('Enrollments API & Progress Tracking', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    withTransaction.mockImplementation(async (work) => work({ query: executeQuery }));
   });
 
   describe('POST /api/v1/courses/:courseId/enrollments', () => {
@@ -283,9 +287,20 @@ describe('Enrollments API & Progress Tracking', () => {
       executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
       // Progress calculation: completed lessons
       executeQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-      // Completion check: progress calculation
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+      // Canonical completion snapshot via issueCertificateIfEligible
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 1,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      });
 
       const res = await request(app)
         .patch('/api/v1/enrollments/100/progress')
@@ -319,9 +334,20 @@ describe('Enrollments API & Progress Tracking', () => {
       // Progress calculation
       executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
       executeQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-      // Completion check
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+      // Canonical completion snapshot via issueCertificateIfEligible
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 1,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      });
 
       const res = await request(app)
         .patch('/api/v1/enrollments/100/progress')
@@ -330,6 +356,149 @@ describe('Enrollments API & Progress Tracking', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.completed).toBe(true);
+    });
+
+    it('marks enrollment COMPLETED, issues a certificate, and writes CERTIFICATE_ISSUED audit log atomically when the final lesson completes all requirements', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE', status: 'ACTIVE' });
+      // Enrollment lookup
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainee_id: '20', course_id: '1', status: 'ACTIVE' }],
+      });
+      // Lesson lookup
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '6', course_id: '1' }],
+      });
+
+      const txClient = {
+        query: vi
+          .fn()
+          // 1. INSERT INTO lesson_progress
+          .mockResolvedValueOnce({ rows: [] })
+          // 2. calculateCourseProgress: total lessons
+          .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+          // 3. calculateCourseProgress: completed lessons
+          .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+          // 4. findCourseEligibilitySnapshot (FOR UPDATE)
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '100',
+                enrollmentStatus: 'ACTIVE',
+                completedAt: null,
+                totalLessons: 2,
+                completedLessons: 2,
+                requiredAssessmentCount: 1,
+                passedRequiredAssessmentCount: 1,
+              },
+            ],
+          })
+          // 5. markEnrollmentCompleted
+          .mockResolvedValueOnce({
+            rows: [{ id: '100', status: 'COMPLETED', completedAt: '2026-11-17T00:00:00.000Z' }],
+          })
+          // 6. findCertificateByTraineeAndCourse
+          .mockResolvedValueOnce({ rows: [] })
+          // 7. insertCertificate
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: '55',
+                traineeId: '20',
+                courseId: '1',
+                courseTitle: 'Atmospheric Data Modeling',
+                courseSubject: 'Meteorology',
+                certificateCode: 'CAP-ABCD-EF01-2345',
+                issuedAt: '2026-11-17T00:00:00.000Z',
+                revokedAt: null,
+              },
+            ],
+          })
+          // 8. insertCertificateIssuedAuditLog
+          .mockResolvedValueOnce({ rows: [{ id: '901' }] }),
+      };
+      withTransaction.mockImplementationOnce(async (work) => work(txClient));
+
+      const res = await request(app)
+        .patch('/api/v1/enrollments/100/progress')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ lessonId: '6' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        enrollmentId: '100',
+        courseId: '1',
+        lessonId: '6',
+        completed: true,
+        progressPercentage: 100,
+        completedLessons: 2,
+        totalLessons: 2,
+        isComplete: true,
+        status: 'COMPLETED',
+      });
+      expect(withTransaction).toHaveBeenCalledTimes(1);
+      expect(txClient.query).toHaveBeenCalledTimes(8);
+      expect(txClient.query.mock.calls[4][0]).toContain("SET status = 'COMPLETED'");
+      expect(txClient.query.mock.calls[6][0]).toContain('INSERT INTO certificates');
+      expect(txClient.query.mock.calls[7][0]).toContain('INSERT INTO audit_logs');
+    });
+
+    it('propagates 500 and aborts transaction when audit log insertion fails during final lesson completion', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE', status: 'ACTIVE' });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '100', trainee_id: '20', course_id: '1', status: 'ACTIVE' }],
+      });
+      executeQuery.mockResolvedValueOnce({
+        rows: [{ id: '6', course_id: '1' }],
+      });
+
+      const txClient = {
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+          .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '100',
+                enrollmentStatus: 'ACTIVE',
+                completedAt: null,
+                totalLessons: 2,
+                completedLessons: 2,
+                requiredAssessmentCount: 0,
+                passedRequiredAssessmentCount: 0,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [{ id: '100', status: 'COMPLETED', completedAt: '2026-11-17T00:00:00.000Z' }],
+          })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: '56',
+                traineeId: '20',
+                courseId: '1',
+                courseTitle: 'Atmospheric Data Modeling',
+                courseSubject: 'Meteorology',
+                certificateCode: 'CAP-ABCD-EF01-9999',
+                issuedAt: '2026-11-17T00:00:00.000Z',
+                revokedAt: null,
+              },
+            ],
+          })
+          .mockRejectedValueOnce(new Error('Simulated audit_logs write failure')),
+      };
+      withTransaction.mockImplementationOnce(async (work) => work(txClient));
+
+      const res = await request(app)
+        .patch('/api/v1/enrollments/100/progress')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({ lessonId: '6' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_SERVER_ERROR');
     });
 
     it('rejects a lesson that belongs to another course (400 LESSON_COURSE_MISMATCH)', async () => {
@@ -371,45 +540,143 @@ describe('Enrollments API & Progress Tracking', () => {
 
   describe('Course Completion Rule Hook', () => {
     it('marks enrollment COMPLETED when all lessons done and no required assessment exists', async () => {
-      // 2 total lessons, 2 completed lessons
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      // assessments query: no required published assessment
-      executeQuery.mockResolvedValueOnce({ rows: [] });
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 2,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      });
 
       const evaluation = await evaluateCourseCompletion('1', '100', '20');
       expect(evaluation.isComplete).toBe(true);
+      expect(evaluation.reason).toBe('ELIGIBLE');
+      expect(evaluation.progress).toEqual({
+        completedLessons: 2,
+        totalLessons: 2,
+        progressPercentage: 100,
+      });
     });
 
     it('does NOT complete course when a required published assessment is not passed', async () => {
-      // 2 total lessons, 2 completed lessons
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      // assessments query: 1 required assessment
       executeQuery.mockResolvedValueOnce({
-        rows: [{ id: '501', title: 'Final Exam' }],
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 2,
+            requiredAssessmentCount: 1,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
       });
-      // assessment attempts: no passing attempt
-      executeQuery.mockResolvedValueOnce({ rows: [] });
 
       const evaluation = await evaluateCourseCompletion('1', '100', '20');
       expect(evaluation.isComplete).toBe(false);
-      expect(evaluation.reason).toBe('REQUIRED_ASSESSMENT_NOT_PASSED');
+      expect(evaluation.reason).toBe('REQUIRED_ASSESSMENTS_INCOMPLETE');
     });
 
     it('marks course complete when all lessons are done AND required published assessment is passed', async () => {
-      // 2 total lessons, 2 completed lessons
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      executeQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] });
-      // assessments query: 1 required assessment
       executeQuery.mockResolvedValueOnce({
-        rows: [{ id: '501', title: 'Final Exam' }],
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 2,
+            requiredAssessmentCount: 1,
+            passedRequiredAssessmentCount: 1,
+          },
+        ],
       });
-      // assessment attempts: passed attempt found
-      executeQuery.mockResolvedValueOnce({ rows: [{ id: '9001' }] });
 
       const evaluation = await evaluateCourseCompletion('1', '100', '20');
       expect(evaluation.isComplete).toBe(true);
+      expect(evaluation.reason).toBe('ELIGIBLE');
+    });
+
+    it('rejects zero-lesson courses and CANCELLED enrollments in completion evaluation', async () => {
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'ACTIVE',
+            completedAt: null,
+            totalLessons: 0,
+            completedLessons: 0,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      });
+
+      const zeroLessonEval = await evaluateCourseCompletion('1', '100', '20');
+      expect(zeroLessonEval.isComplete).toBe(false);
+      expect(zeroLessonEval.reason).toBe('NO_LESSONS');
+
+      executeQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            enrollmentId: '100',
+            enrollmentStatus: 'CANCELLED',
+            completedAt: null,
+            totalLessons: 2,
+            completedLessons: 2,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      });
+
+      const cancelledEval = await evaluateCourseCompletion('1', '100', '20');
+      expect(cancelledEval.isComplete).toBe(false);
+      expect(cancelledEval.reason).toBe('ENROLLMENT_INACTIVE');
+    });
+
+    it('checkAndApplyCourseCompletion returns isComplete=true without duplicate certificate when already issued', async () => {
+      executeQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              enrollmentId: '100',
+              enrollmentStatus: 'COMPLETED',
+              completedAt: '2026-11-16T00:00:00.000Z',
+              totalLessons: 2,
+              completedLessons: 2,
+              requiredAssessmentCount: 0,
+              passedRequiredAssessmentCount: 0,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: '55',
+              traineeId: '20',
+              courseId: '1',
+              courseTitle: 'Atmospheric Data Modeling',
+              courseSubject: 'Meteorology',
+              certificateCode: 'CAP-1111-2222-3333',
+              issuedAt: '2026-11-16T00:00:00.000Z',
+              revokedAt: null,
+            },
+          ],
+        });
+
+      const result = await checkAndApplyCourseCompletion('1', '100', '20');
+      expect(result.isComplete).toBe(true);
+      expect(result.issued).toBe(false);
+      expect(result.reason).toBe('ALREADY_ISSUED');
+      expect(result.certificate.certificateCode).toBe('CAP-1111-2222-3333');
     });
   });
 });

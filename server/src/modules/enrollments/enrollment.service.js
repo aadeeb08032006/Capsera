@@ -1,3 +1,4 @@
+import { withTransaction } from '../../config/db.js';
 import { AppError } from '../../shared/AppError.js';
 import { COURSE_STATUSES, ENROLLMENT_STATUSES, ROLES, USER_STATUSES } from '../../shared/constants.js';
 import {
@@ -131,9 +132,16 @@ export async function getMyEnrollments(actor) {
 
 /**
  * Mark a lesson as completed for an enrollment.
- * Safe to call repeatedly (idempotent).
+ * Safe to call repeatedly (idempotent). Executes lesson_progress recording,
+ * course completion evaluation, enrollment status transition, and certificate +
+ * audit log issuance atomically inside a single PostgreSQL transaction.
  */
-export async function markLessonComplete(enrollmentId, lessonId, actor) {
+export async function markLessonComplete(
+  enrollmentId,
+  lessonId,
+  actor,
+  { client = null } = {},
+) {
   if (actor.role !== ROLES.TRAINEE) {
     throw new AppError(403, 'FORBIDDEN', 'Only trainees can update course progress');
   }
@@ -141,6 +149,7 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
   const enrollRes = await runSql(
     'SELECT id, trainee_id, course_id, status FROM enrollments WHERE id = $1',
     [String(enrollmentId)],
+    client,
   );
 
   if (!enrollRes?.rows?.length) {
@@ -159,6 +168,7 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
   const lessonRes = await runSql(
     'SELECT id, course_id FROM lessons WHERE id = $1',
     [String(lessonId)],
+    client,
   );
 
   if (!lessonRes?.rows?.length) {
@@ -170,31 +180,45 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
     throw new AppError(400, 'LESSON_COURSE_MISMATCH', 'Lesson does not belong to this course');
   }
 
-  await runSql(
-    `INSERT INTO lesson_progress (enrollment_id, course_id, lesson_id, completed_at)
-     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-     ON CONFLICT (enrollment_id, lesson_id) DO NOTHING`,
-    [String(enrollment.id), String(enrollment.course_id), String(lesson.id)],
-  );
+  const executeCompletionWork = async (txClient) => {
+    await runSql(
+      `INSERT INTO lesson_progress (enrollment_id, course_id, lesson_id, completed_at)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       ON CONFLICT (enrollment_id, lesson_id) DO NOTHING`,
+      [String(enrollment.id), String(enrollment.course_id), String(lesson.id)],
+      txClient,
+    );
 
-  const progress = await calculateCourseProgress(enrollment.course_id, enrollment.id);
+    const progress = await calculateCourseProgress(
+      enrollment.course_id,
+      enrollment.id,
+      txClient,
+    );
 
-  // Evaluate course completion hook (all lessons done + required published assessments passed)
-  const completion = await checkAndApplyCourseCompletion(
-    enrollment.course_id,
-    enrollment.id,
-    actor.id,
-  );
+    // Evaluate course completion hook and atomically issue certificate + audit event when eligible
+    const completion = await checkAndApplyCourseCompletion(
+      enrollment.course_id,
+      enrollment.id,
+      actor.id,
+      txClient,
+    );
 
-  return {
-    enrollmentId: String(enrollment.id),
-    courseId: String(enrollment.course_id),
-    lessonId: String(lesson.id),
-    completed: true,
-    progressPercentage: progress.progressPercentage,
-    completedLessons: progress.completedLessons,
-    totalLessons: progress.totalLessons,
-    isComplete: completion.isComplete,
-    status: completion.isComplete ? ENROLLMENT_STATUSES.COMPLETED : enrollment.status,
+    return {
+      enrollmentId: String(enrollment.id),
+      courseId: String(enrollment.course_id),
+      lessonId: String(lesson.id),
+      completed: true,
+      progressPercentage: progress.progressPercentage,
+      completedLessons: progress.completedLessons,
+      totalLessons: progress.totalLessons,
+      isComplete: completion.isComplete,
+      status: completion.isComplete ? ENROLLMENT_STATUSES.COMPLETED : enrollment.status,
+    };
   };
+
+  if (client) {
+    return await executeCompletionWork(client);
+  }
+
+  return await withTransaction(executeCompletionWork);
 }
