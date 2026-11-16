@@ -13,6 +13,7 @@ import adminUserRouter from './modules/users/user.routes.js';
 import adminDashboardRouter from './modules/admin/dashboard.routes.js';
 import courseRoutes from './modules/courses/course.routes.js';
 import { lessonRoutes } from './modules/courses/lesson.routes.js';
+import enrollmentRoutes from './modules/enrollments/enrollment.routes.js';
 import {
   assessmentRouter,
   attemptRouter,
@@ -93,6 +94,7 @@ apiRouter.use('/courses/:courseId/results', courseResultsRouter);
 apiRouter.use('/courses/:courseId/feedback', courseFeedbackRouter);
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/lessons', lessonRoutes);
+apiRouter.use('/enrollments', enrollmentRoutes);
 apiRouter.use('/assessments', assessmentRouter);
 apiRouter.use('/attempts', attemptRouter);
 apiRouter.use('/skills', skillsRoutes);
