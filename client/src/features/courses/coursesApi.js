@@ -88,6 +88,14 @@ export async function listLessons(courseId, options = {}) {
   return payload.data?.lessons || [];
 }
 
+export async function getLessonById(lessonId, options = {}) {
+  const payload = await apiRequest(`/lessons/${lessonId}`, {
+    ...options,
+    method: 'GET',
+  });
+  return payload.data?.lesson;
+}
+
 export async function createLesson(courseId, lessonData, options = {}) {
   const payload = await apiRequest(`/courses/${courseId}/lessons`, {
     ...options,
@@ -106,11 +114,12 @@ export async function updateLesson(lessonId, updates, options = {}) {
   return payload.data?.lesson;
 }
 
-export async function reorderLessons(courseId, orderedLessonIds, options = {}) {
+export async function reorderLessons(courseId, lessonIds, options = {}) {
+  const ids = Array.isArray(lessonIds) ? lessonIds : (lessonIds?.orderedLessonIds || []);
   const payload = await apiRequest(`/courses/${courseId}/lessons/reorder`, {
     ...options,
     method: 'PUT',
-    body: JSON.stringify({ orderedLessonIds }),
+    body: JSON.stringify({ lessonIds: ids }),
   });
   return payload.data?.lessons || [];
 }
