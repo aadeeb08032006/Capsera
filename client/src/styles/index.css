@@ -100,14 +100,15 @@ body {
 }
 
 .navbar-inner {
-  max-width: 900px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1.25rem;
-  height: 56px;
+  padding: 0.5rem 1.25rem;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
 }
 
 .navbar-brand {
@@ -125,9 +126,10 @@ body {
 .navbar-links {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   margin-right: auto;
-  margin-left: 1.5rem;
+  margin-left: 1rem;
 }
 
 .navbar-links a {
@@ -135,6 +137,7 @@ body {
   font-size: 0.9rem;
   font-weight: 600;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .navbar-links a:hover {
@@ -432,7 +435,17 @@ body {
 .dashboard-container {
   max-width: 760px;
   margin: 0 auto;
-  padding: 2.5rem 1.25rem;
+  padding: 2.5rem 1.25rem 0;
+}
+
+.dashboard-announcements {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.25rem 2.5rem;
+}
+
+.dashboard-announcements .announcements-section {
+  margin-top: 0;
 }
 
 .dashboard-welcome {
@@ -907,6 +920,13 @@ body {
 }
 
 @media (max-width: 700px) {
+  .navbar-links {
+    margin-left: 0;
+    width: 100%;
+    order: 3;
+    gap: 0.45rem 0.9rem;
+  }
+
   .profile-fields,
   .users-toolbar {
     grid-template-columns: 1fr;

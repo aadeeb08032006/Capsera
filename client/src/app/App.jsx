@@ -11,7 +11,14 @@ import NotAuthorizedPage from '../features/auth/NotAuthorizedPage.jsx';
 import DashboardPage from '../features/auth/DashboardPage.jsx';
 
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import AdminAnnouncementsPage from '../features/announcements/AdminAnnouncementsPage.jsx';
+import MyCertificatesPage from '../features/certificates/MyCertificatesPage.jsx';
 import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+import AdminSkillsPage from '../features/competency/AdminSkillsPage.jsx';
+import TraineeSkillsPage from '../features/competency/TraineeSkillsPage.jsx';
+import TrainerSkillsPage from '../features/competency/TrainerSkillsPage.jsx';
+import TrainerRecommendationsPage from '../features/competency/TrainerRecommendationsPage.jsx';
+import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
 import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
 import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
 import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
@@ -19,6 +26,17 @@ import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
 import ProfilePage from '../features/profiles/ProfilePage.jsx';
 import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
 import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
+
+function AuthenticatedHomePage() {
+  return (
+    <>
+      <DashboardPage />
+      <div className="dashboard-announcements">
+        <AnnouncementsFeedSection />
+      </div>
+    </>
+  );
+}
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -209,13 +227,70 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/skills"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/announcements"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminAnnouncementsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/skills"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
+              <TraineeSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/skills"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER']}>
+              <TrainerSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainers/recommendations"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <TrainerRecommendationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/certificates"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
+              <MyCertificatesPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected root - redirects to login if not signed in */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <DashboardPage />
+              <AuthenticatedHomePage />
             </ProtectedRoute>
           }
         />
