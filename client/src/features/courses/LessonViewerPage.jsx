@@ -6,6 +6,7 @@ import {
   getMyEnrollments,
   markLessonProgress,
   listResources,
+  downloadResourceFile,
 } from './coursesApi.js';
 
 export default function LessonViewerPage() {
@@ -16,6 +17,8 @@ export default function LessonViewerPage() {
   const [course, setCourse] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [resources, setResources] = useState([]);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [downloadError, setDownloadError] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
   const [completedLessonIds, setCompletedLessonIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -129,6 +132,22 @@ export default function LessonViewerPage() {
   const goToLesson = (targetLessonId) => {
     navigate(`/courses/${courseId}/lessons/${targetLessonId}`);
     setSidebarOpen(false);
+  };
+
+  const handleDownload = async (resource) => {
+    try {
+      setDownloadingId(resource.id);
+      setDownloadError(null);
+      await downloadResourceFile(
+        courseId,
+        resource.id,
+        resource.originalFilename || `${resource.title}.pdf`,
+      );
+    } catch (err) {
+      setDownloadError(err.message || 'Failed to download file.');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   // Loading state
@@ -346,35 +365,71 @@ export default function LessonViewerPage() {
         {/* Lesson Resources Section */}
         {resources.length > 0 && (
           <section className="lesson-resources-card" aria-labelledby="resources-heading">
-            <h2 id="resources-heading">Lesson Resources & Downloads</h2>
+            <h2 id="resources-heading">Study Materials & Attached Resources</h2>
+            {downloadError && (
+              <div className="form-alert alert-error" role="alert">
+                <span className="alert-icon" aria-hidden="true">⚠️</span>
+                <div className="alert-body">{downloadError}</div>
+              </div>
+            )}
             <ul className="resource-list">
-              {resources.map((resource) => (
-                <li key={resource.id} className="resource-item">
-                  <span className="resource-icon" aria-hidden="true">📄</span>
-                  <div className="resource-info">
-                    <span className="resource-title">{resource.title}</span>
-                    <span className="resource-type-badge">{resource.resourceType || 'DOCUMENT'}</span>
-                  </div>
-                  {resource.externalUrl ? (
-                    <a
-                      href={resource.externalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-sm btn-secondary"
-                    >
-                      Open Link ↗
-                    </a>
-                  ) : (
-                    <a
-                      href={`/api/v1/courses/${courseId}/resources/${resource.id}/download`}
-                      download
-                      className="btn btn-sm btn-primary"
-                    >
-                      Download
-                    </a>
-                  )}
-                </li>
-              ))}
+              {resources
+                .filter(
+                  (res) =>
+                    !res.lessonId || String(res.lessonId) === String(currentLesson.id),
+                )
+                .map((resource) => {
+                  const icon =
+                    resource.resourceType === 'VIDEO'
+                      ? '🎥'
+                      : resource.resourceType === 'PRESENTATION'
+                      ? '📊'
+                      : resource.resourceType === 'LINK'
+                      ? '🔗'
+                      : '📄';
+
+                  return (
+                    <li key={resource.id} className="resource-item">
+                      <span className="resource-icon" aria-hidden="true">{icon}</span>
+                      <div className="resource-info">
+                        <span className="resource-title">{resource.title}</span>
+                        <div className="resource-meta-tags">
+                          <span className="resource-type-badge">
+                            {resource.resourceType || 'DOCUMENT'}
+                          </span>
+                          {resource.fileSizeBytes && (
+                            <span className="resource-size-tag">
+                              {(resource.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                            </span>
+                          )}
+                          {resource.lessonId && (
+                            <span className="resource-lesson-tag">This Lesson</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {resource.externalUrl ? (
+                        <a
+                          href={resource.externalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-secondary"
+                        >
+                          Visit Link ↗
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          disabled={downloadingId === resource.id}
+                          onClick={() => handleDownload(resource)}
+                        >
+                          {downloadingId === resource.id ? 'Downloading...' : 'Download File'}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
             </ul>
           </section>
         )}

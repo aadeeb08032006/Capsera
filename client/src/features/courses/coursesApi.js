@@ -161,6 +161,36 @@ export async function deleteResource(courseId, resourceId, options = {}) {
   return payload.data;
 }
 
+export async function downloadResourceFile(courseId, resourceId, fallbackFilename = 'resource-file') {
+  const token =
+    (typeof localStorage !== 'undefined' && localStorage.getItem('token')) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('token')) ||
+    null;
+
+  const url = `/api/v1/courses/${courseId}/resources/${resourceId}/download`;
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.error?.message || `Download failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = blobUrl;
+  anchor.download = fallbackFilename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(blobUrl);
+}
+
 // ============================================================================
 // Enrollments & Progress Endpoints
 // ============================================================================

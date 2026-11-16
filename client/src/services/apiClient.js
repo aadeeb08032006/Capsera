@@ -13,8 +13,14 @@ export async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${normalizedPath}`;
 
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const token =
+    (typeof localStorage !== 'undefined' && localStorage.getItem('token')) ||
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('token')) ||
+    null;
+
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {}),
   };
 

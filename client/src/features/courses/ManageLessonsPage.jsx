@@ -7,13 +7,19 @@ import {
   updateLesson,
   deleteLesson,
   reorderLessons,
+  listResources,
+  deleteResource,
 } from './coursesApi.js';
+import ResourceUploadModal from './ResourceUploadModal.jsx';
 
 export default function ManageLessonsPage() {
   const { courseId } = useParams();
 
   const [course, setCourse] = useState(null);
   const [lessons, setLessons] = useState([]);
+  const [resources, setResources] = useState([]);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [deletingResourceId, setDeletingResourceId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -34,19 +40,21 @@ export default function ManageLessonsPage() {
 
   const formRef = useRef(null);
 
-  // Fetch course and lessons
+  // Fetch course, lessons, and resources
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [courseData, lessonsList] = await Promise.all([
+      const [courseData, lessonsList, resourcesList] = await Promise.all([
         getCourseById(courseId),
         listLessons(courseId),
+        listResources(courseId).catch(() => []),
       ]);
 
       setCourse(courseData);
       setLessons(lessonsList || []);
+      setResources(resourcesList || []);
     } catch (err) {
       setError(err.message || 'Failed to load lessons data.');
     } finally {
@@ -180,6 +188,21 @@ export default function ManageLessonsPage() {
       setError(err.message || 'Failed to delete lesson.');
     } finally {
       setDeleteSubmitting(false);
+    }
+  };
+
+  // Delete resource
+  const handleDeleteResource = async (resourceId) => {
+    try {
+      setDeletingResourceId(resourceId);
+      setError(null);
+      await deleteResource(courseId, resourceId);
+      setResources((prev) => prev.filter((r) => String(r.id) !== String(resourceId)));
+      setSuccessMsg('Resource removed successfully.');
+    } catch (err) {
+      setError(err.message || 'Failed to delete resource.');
+    } finally {
+      setDeletingResourceId(null);
     }
   };
 
@@ -443,7 +466,105 @@ export default function ManageLessonsPage() {
         </div>
       </section>
 
-      {/* Delete Lesson Confirmation Modal */}
+      {/* Course Resources Section */}
+      <section className="manage-resources-section" aria-labelledby="resources-management-heading">
+        <div className="section-title-bar">
+          <div>
+            <h2 id="resources-management-heading">Course Resources & Materials</h2>
+            <p className="section-subtitle">
+              Upload study guides, presentations, datasets, and reference links for this course.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setUploadModalOpen(true)}
+          >
+            + Upload New Resource
+          </button>
+        </div>
+
+        {resources.length === 0 ? (
+          <div className="courses-empty-state" role="region" aria-labelledby="empty-res-heading">
+            <h3 id="empty-res-heading">No resources uploaded yet</h3>
+            <p>Upload slides, PDFs, or external links to complement your lessons.</p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setUploadModalOpen(true)}
+            >
+              Upload First Resource
+            </button>
+          </div>
+        ) : (
+          <div className="resources-manage-grid">
+            {resources.map((res) => {
+              const assignedLesson = lessons.find((l) => String(l.id) === String(res.lessonId));
+              return (
+                <div key={res.id} className="resource-manage-card">
+                  <div className="res-card-top">
+                    <span className="res-type-badge">{res.resourceType || 'DOCUMENT'}</span>
+                    {res.fileSizeBytes && (
+                      <span className="res-size-badge">
+                        {(res.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="res-card-title">{res.title}</h3>
+
+                  <div className="res-card-meta">
+                    <span className="res-scope-tag">
+                      {assignedLesson ? `Lesson: ${assignedLesson.title}` : 'All Course Lessons'}
+                    </span>
+                  </div>
+
+                  <div className="res-card-actions">
+                    {res.externalUrl ? (
+                      <a
+                        href={res.externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-sm btn-secondary"
+                      >
+                        Visit Link ↗
+                      </a>
+                    ) : (
+                      <a
+                        href={`/api/v1/courses/${courseId}/resources/${res.id}/download`}
+                        download
+                        className="btn btn-sm btn-secondary"
+                      >
+                        Download
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      disabled={deletingResourceId === res.id}
+                      onClick={() => handleDeleteResource(res.id)}
+                    >
+                      {deletingResourceId === res.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Upload Resource Modal */}
+      <ResourceUploadModal
+        courseId={courseId}
+        lessons={lessons}
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        onSuccess={(newResource) => {
+          setResources((prev) => [...prev, newResource]);
+          setSuccessMsg(`Resource "${newResource.title}" uploaded successfully!`);
+        }}
+      />
       {deletingLesson && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="del-modal-title">
           <div className="modal-content">
