@@ -1,7 +1,12 @@
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import { sendSuccess } from '../../shared/response.js';
 import * as enrollmentService from './enrollment.service.js';
-import { courseIdParamSchema, parseWithSchema } from './enrollment.validation.js';
+import {
+  courseIdParamSchema,
+  enrollmentIdParamSchema,
+  parseWithSchema,
+  updateProgressBodySchema,
+} from './enrollment.validation.js';
 
 export const enrollInCourseHandler = asyncHandler(async (req, res) => {
   const { courseId } = parseWithSchema(courseIdParamSchema, req.params);
@@ -12,4 +17,11 @@ export const enrollInCourseHandler = asyncHandler(async (req, res) => {
 export const getMyEnrollmentsHandler = asyncHandler(async (req, res) => {
   const enrollments = await enrollmentService.getMyEnrollments(req.user);
   return sendSuccess(res, { enrollments, items: enrollments });
+});
+
+export const markLessonCompleteHandler = asyncHandler(async (req, res) => {
+  const { enrollmentId } = parseWithSchema(enrollmentIdParamSchema, req.params);
+  const { lessonId } = parseWithSchema(updateProgressBodySchema, req.body ?? {});
+  const result = await enrollmentService.markLessonComplete(enrollmentId, lessonId, req.user);
+  return sendSuccess(res, result);
 });

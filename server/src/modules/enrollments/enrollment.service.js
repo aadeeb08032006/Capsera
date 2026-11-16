@@ -155,4 +155,65 @@ export async function getMyEnrollments(actor) {
   return enrollments;
 }
 
+/**
+ * Mark a lesson as completed for an enrollment.
+ * Safe to call repeatedly (idempotent).
+ */
+export async function markLessonComplete(enrollmentId, lessonId, actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only trainees can update course progress');
+  }
+
+  const enrollRes = await runSql(
+    'SELECT id, trainee_id, course_id, status FROM enrollments WHERE id = $1',
+    [String(enrollmentId)],
+  );
+
+  if (!enrollRes?.rows?.length) {
+    throw new AppError(404, 'ENROLLMENT_NOT_FOUND', 'Enrollment not found');
+  }
+
+  const enrollment = enrollRes.rows[0];
+  if (String(enrollment.trainee_id) !== String(actor.id)) {
+    throw new AppError(403, 'FORBIDDEN', 'You can only update progress for your own enrollments');
+  }
+
+  if (enrollment.status === ENROLLMENT_STATUSES.CANCELLED) {
+    throw new AppError(409, 'ENROLLMENT_INACTIVE', 'Cannot update progress on a cancelled enrollment');
+  }
+
+  const lessonRes = await runSql(
+    'SELECT id, course_id FROM lessons WHERE id = $1',
+    [String(lessonId)],
+  );
+
+  if (!lessonRes?.rows?.length) {
+    throw new AppError(404, 'LESSON_NOT_FOUND', 'Lesson not found');
+  }
+
+  const lesson = lessonRes.rows[0];
+  if (String(lesson.course_id) !== String(enrollment.course_id)) {
+    throw new AppError(400, 'LESSON_COURSE_MISMATCH', 'Lesson does not belong to this course');
+  }
+
+  await runSql(
+    `INSERT INTO lesson_progress (enrollment_id, course_id, lesson_id, completed_at)
+     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (enrollment_id, lesson_id) DO NOTHING`,
+    [String(enrollment.id), String(enrollment.course_id), String(lesson.id)],
+  );
+
+  const progress = await calculateCourseProgress(enrollment.course_id, enrollment.id);
+
+  return {
+    enrollmentId: String(enrollment.id),
+    courseId: String(enrollment.course_id),
+    lessonId: String(lesson.id),
+    completed: true,
+    progressPercentage: progress.progressPercentage,
+    completedLessons: progress.completedLessons,
+    totalLessons: progress.totalLessons,
+  };
+}
+
 export { calculateCourseProgress, getProgressPercentage } from './progress.helpers.js';

@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireRole } from '../../middleware/requireRole.js';
 import { ROLES } from '../../shared/constants.js';
-import { enrollInCourseHandler, getMyEnrollmentsHandler } from './enrollment.controller.js';
+import {
+  enrollInCourseHandler,
+  getMyEnrollmentsHandler,
+  markLessonCompleteHandler,
+} from './enrollment.controller.js';
 
 // Router for course-scoped enrollments: POST /api/v1/courses/:courseId/enrollments
 export const courseEnrollmentRoutes = Router({ mergeParams: true });
@@ -12,5 +16,10 @@ courseEnrollmentRoutes.post('/', requireRole(ROLES.TRAINEE), enrollInCourseHandl
 const enrollmentRoutes = Router();
 enrollmentRoutes.use(authenticate);
 enrollmentRoutes.get('/me', requireRole(ROLES.TRAINEE), getMyEnrollmentsHandler);
+enrollmentRoutes.patch(
+  '/:enrollmentId/progress',
+  requireRole(ROLES.TRAINEE),
+  markLessonCompleteHandler,
+);
 
 export default enrollmentRoutes;

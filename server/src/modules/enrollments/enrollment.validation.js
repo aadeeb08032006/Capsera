@@ -16,6 +16,10 @@ export const enrollmentIdParamSchema = z.object({
   enrollmentId: positiveIdSchema,
 });
 
+export const updateProgressBodySchema = z.strictObject({
+  lessonId: positiveIdSchema,
+});
+
 export function parseWithSchema(schema, input) {
   const result = schema.safeParse(input);
   if (!result.success) {
