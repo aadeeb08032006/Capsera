@@ -20,6 +20,11 @@ export default function Navbar() {
           CAPSERA
         </Link>
 
+        <div className="navbar-links">
+          {(user.role === 'TRAINEE' || user.role === 'TRAINER') && <Link to="/profile">Profile</Link>}
+          {user.role === 'ADMIN' && <Link to="/admin/users">Users</Link>}
+        </div>
+
         <div className="navbar-user">
           <span className="navbar-user-name" aria-label={`Signed in as ${user.fullName}`}>
             {user.fullName}

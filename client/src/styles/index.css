@@ -122,6 +122,27 @@ body {
   color: #2563eb;
 }
 
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-right: auto;
+  margin-left: 1.5rem;
+}
+
+.navbar-links a {
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.navbar-links a:hover {
+  color: #047857;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .navbar-user {
   display: flex;
   align-items: center;
@@ -518,5 +539,330 @@ body {
 
   .dashboard-title {
     font-size: 1.35rem;
+  }
+}
+
+/* ─── Profile and admin user pages ────────────────────────────────── */
+.profile-page,
+.admin-users-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 3rem;
+}
+
+.page-header {
+  margin-bottom: 1.5rem;
+}
+
+.page-eyebrow {
+  margin: 0 0 0.35rem;
+  color: #047857;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.page-header h1 {
+  margin: 0;
+  color: #142a2a;
+  font-size: 1.8rem;
+}
+
+.page-header > p:last-child {
+  margin: 0.4rem 0 0;
+  color: #536568;
+}
+
+.profile-form {
+  padding: 1.5rem;
+  border: 1px solid #d5e0dc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.profile-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+}
+
+.page-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.page-field--wide {
+  grid-column: 1 / -1;
+}
+
+.page-field label,
+.users-page-controls label {
+  color: #263c3c;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.page-field input,
+.page-field textarea,
+.page-field select,
+.users-row-actions select,
+.users-page-controls select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #9aadaa;
+  border-radius: 4px;
+  background: #fff;
+  color: #142a2a;
+  font: inherit;
+}
+
+.page-field textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.page-field input:focus-visible,
+.page-field textarea:focus-visible,
+.page-field select:focus-visible,
+.users-row-actions select:focus-visible,
+.users-page-controls select:focus-visible,
+.users-table-scroll:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.page-field [aria-invalid='true'] {
+  border-color: #b42318;
+}
+
+.page-field-error {
+  color: #b42318;
+  font-size: 0.82rem;
+}
+
+.page-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.page-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #647779;
+  border-radius: 4px;
+  background: #fff;
+  color: #183333;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.page-button:hover:not(:disabled) {
+  background: #eff6f3;
+}
+
+.page-button--primary {
+  border-color: #087c68;
+  background: #087c68;
+  color: #fff;
+}
+
+.page-button--primary:hover:not(:disabled) {
+  background: #066653;
+}
+
+.page-button--danger {
+  border-color: #b42318;
+  color: #a32118;
+}
+
+.page-button--danger:hover:not(:disabled) {
+  background: #fff1f0;
+}
+
+.page-button--small {
+  min-height: 34px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.page-alert,
+.page-success,
+.page-state {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 4px;
+}
+
+.page-alert {
+  border: 1px solid #e6aaa5;
+  background: #fff4f2;
+  color: #8e2118;
+}
+
+.page-success {
+  border: 1px solid #9cc9ae;
+  background: #eff8f1;
+  color: #145c37;
+}
+
+.page-state {
+  border: 1px solid #d5e0dc;
+  background: #f5f8f6;
+  color: #536568;
+}
+
+.users-toolbar {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(160px, 0.8fr) minmax(220px, 1.5fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border-top: 1px solid #d5e0dc;
+  border-bottom: 1px solid #d5e0dc;
+}
+
+.users-table-section {
+  min-height: 120px;
+}
+
+.users-table-scroll {
+  overflow-x: auto;
+  border: 1px solid #d5e0dc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.users-table th,
+.users-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e9e6;
+  vertical-align: middle;
+}
+
+.users-table th {
+  background: #f3f7f5;
+  color: #344b49;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.users-table td {
+  color: #263c3c;
+  font-size: 0.88rem;
+}
+
+.users-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.user-status {
+  display: inline-block;
+  padding: 0.2rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.user-status--pending { background: #fff3cd; color: #75530b; }
+.user-status--active { background: #e3f3e8; color: #17613a; }
+.user-status--suspended { background: #ffebe8; color: #9c2c21; }
+.user-status--rejected { background: #edf0ef; color: #53605e; }
+
+.users-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.users-row-actions select {
+  width: auto;
+  min-height: 34px;
+  padding: 0.3rem 1.5rem 0.3rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.users-self-note {
+  color: #687a77;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.users-pagination,
+.users-page-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.users-pagination {
+  margin-top: 1rem;
+  color: #536568;
+  font-size: 0.86rem;
+}
+
+.users-pagination p { margin: 0; }
+
+.users-page-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.users-page-controls select {
+  width: auto;
+  min-height: 34px;
+  padding: 0.3rem 1.5rem 0.3rem 0.45rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 700px) {
+  .profile-fields,
+  .users-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .users-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .users-page-controls {
+    justify-content: flex-start;
+  }
+
+  .users-table {
+    min-width: 940px;
   }
 }

@@ -16,6 +16,8 @@ import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentB
 import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
 import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
 import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
+import ProfilePage from '../features/profiles/ProfilePage.jsx';
+import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -181,6 +183,23 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/not-authorized" element={<NotAuthorizedPage />} />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER']}>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected root - redirects to login if not signed in */}
         <Route
