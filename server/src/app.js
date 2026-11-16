@@ -6,12 +6,25 @@ import { checkDatabaseConnection } from './config/db.js';
 import { sendSuccess } from './shared/response.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { authenticate } from './middleware/authenticate.js';
+import { requireRole } from './middleware/requireRole.js';
 import authRouter from './modules/auth/auth.routes.js';
+import adminUserRouter from './modules/users/user.routes.js';
+import adminDashboardRouter from './modules/admin/dashboard.routes.js';
 import courseRoutes from './modules/courses/course.routes.js';
 import { lessonRoutes } from './modules/courses/lesson.routes.js';
 import enrollmentRoutes from './modules/enrollments/enrollment.routes.js';
+import {
+  assessmentRouter,
+  attemptRouter,
+  courseAssessmentRouter,
+  courseFeedbackRouter,
+  courseResultsRouter,
+} from './modules/assessments/assessment.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
+import announcementRoutes from './modules/announcements/announcements.routes.js';
+import certificateRoutes from './modules/certificates/certificates.routes.js';
 
 const app = express();
 
@@ -36,6 +49,8 @@ app.use((req, res, next) => {
 // Canonical /api/v1 router
 const apiRouter = express.Router();
 apiRouter.use('/auth', authRouter);
+apiRouter.use('/admin/users', authenticate, requireRole('ADMIN'), adminUserRouter);
+apiRouter.use('/admin/dashboard', adminDashboardRouter);
 
 /**
  * GET /api/v1/health
@@ -74,12 +89,19 @@ apiRouter.get('/health', async (req, res, next) => {
 });
 
 // Mount /api/v1 prefix (Feature module routers will be registered here by Members 1–4)
+apiRouter.use('/courses/:courseId/assessments', courseAssessmentRouter);
+apiRouter.use('/courses/:courseId/results', courseResultsRouter);
+apiRouter.use('/courses/:courseId/feedback', courseFeedbackRouter);
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/lessons', lessonRoutes);
 apiRouter.use('/enrollments', enrollmentRoutes);
+apiRouter.use('/assessments', assessmentRouter);
+apiRouter.use('/attempts', attemptRouter);
 apiRouter.use('/skills', skillsRoutes);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);
+apiRouter.use('/announcements', announcementRoutes);
+apiRouter.use('/certificates', certificateRoutes);
 app.use(env.apiPrefix, apiRouter);
 
 // Fallback & error handlers

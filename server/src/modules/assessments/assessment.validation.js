@@ -205,7 +205,8 @@ export const submitAttemptBodySchema = z.strictObject({
           .enum(MCQ_OPTIONS, {
             error: 'selectedOption must be one of A, B, C, D, or null',
           })
-          .nullable(),
+          .nullable()
+          .optional(),
       }),
       { error: 'answers must be an array' },
     )
@@ -235,6 +236,22 @@ export const courseResultsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   assessmentId: positiveIdSchema.optional(),
+});
+
+// ─── Course Feedback Schemas ───
+
+export const courseFeedbackBodySchema = z.strictObject({
+  rating: z
+    .number({ error: 'rating is required' })
+    .int('rating must be an integer')
+    .min(1, 'rating must be between 1 and 5')
+    .max(5, 'rating must be between 1 and 5'),
+  comment: optionalNullableTrimmedString(2000, 'comment'),
+});
+
+export const courseFeedbackQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 /**

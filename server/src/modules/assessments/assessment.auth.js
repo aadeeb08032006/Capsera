@@ -19,6 +19,13 @@ export async function runSql(sql, params = [], client = null) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Invalid identifier or parameter format');
     }
     if (error?.code === '23505') {
+      if (error?.constraint === 'uq_questions_assessment_order') {
+        throw new AppError(
+          409,
+          'DUPLICATE_QUESTION_ORDER',
+          'Question with this order already exists in the assessment',
+        );
+      }
       throw new AppError(409, 'CONFLICT', 'Resource conflicts with an existing record');
     }
     if (error?.code === '23503' || error?.code === '23514') {

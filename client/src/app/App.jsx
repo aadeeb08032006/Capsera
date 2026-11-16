@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import { AuthProvider } from '../features/auth/AuthContext.jsx';
 import RoleGuard from '../features/auth/RoleGuard.jsx';
 import Navbar from '../features/courses/Navbar.jsx';
+
+// Courses Pages (Member 2)
 import CourseCataloguePage from '../features/courses/CourseCataloguePage.jsx';
 import CourseDetailPage from '../features/courses/CourseDetailPage.jsx';
 import MyLearningPage from '../features/courses/MyLearningPage.jsx';
@@ -11,6 +13,17 @@ import LessonViewerPage from '../features/courses/LessonViewerPage.jsx';
 import TrainerCoursesPage from '../features/courses/TrainerCoursesPage.jsx';
 import CourseFormPage from '../features/courses/CourseFormPage.jsx';
 import ManageLessonsPage from '../features/courses/ManageLessonsPage.jsx';
+
+// Announcements & Certificates Pages (Member 4)
+import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+
+// Assessments & Feedback Pages (Member 3)
+import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
+import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
+import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
+import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
+
 import '../features/courses/courses.css';
 
 function FoundationHomePage() {
@@ -76,7 +89,92 @@ function FoundationHomePage() {
             </span>
           )}
         </div>
+
+        <p style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+          <Link to="/certificates/verify">Verify a Completion Certificate</Link>
+        </p>
       </section>
+
+      <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
+        <h2>Member 3: Assessments & Evaluations Portal</h2>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
+          Interactive interfaces for instructors to author MCQ assessments and analyze student evaluations.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <Link
+            to="/courses/1/assessments/manage"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ✏️ Trainer Quiz Builder
+          </Link>
+          <Link
+            to="/courses/1/assessments/results"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f1f5f9',
+              color: '#334155',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #cbd5e1',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            📊 Course Results & Analytics
+          </Link>
+          <Link
+            to="/courses/1/assessments/1/player"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            🚀 Trainee Quiz Player
+          </Link>
+          <Link
+            to="/courses/1/feedback"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f8fafc',
+              color: '#d97706',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #fde68a',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ⭐ Course Feedback & Ratings
+          </Link>
+        </div>
+      </section>
+
+      <AnnouncementsFeedSection />
     </main>
   );
 }
@@ -90,7 +188,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/courses" replace />} />
         <Route path="/foundation" element={<FoundationHomePage />} />
 
-        {/* Public & Trainee Course Routes */}
+        {/* Public & Trainee Course Routes (Member 2) */}
         <Route path="/courses" element={<CourseCataloguePage />} />
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
         <Route
@@ -145,6 +243,20 @@ export default function App() {
             </RoleGuard>
           }
         />
+
+        {/* Member 3: Assessments & Evaluations Routes */}
+        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
+        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
+
+        {/* Member 4: Certificate Verification Routes */}
+        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/courses" replace />} />
