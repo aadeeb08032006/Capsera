@@ -156,6 +156,24 @@ body {
   color: #334155;
 }
 
+.navbar-account-link {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navbar-account-link:hover {
+  color: #047857;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.auth-recovery-note {
+  margin-bottom: 0;
+}
+
 .navbar-role-badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
@@ -809,6 +827,47 @@ body {
   white-space: nowrap;
 }
 
+.temporary-password-box {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 2px solid #087c68;
+  border-radius: 4px;
+  background: #eff8f1;
+}
+
+.temporary-password-box h2 {
+  margin: 0;
+  color: #145c37;
+  font-size: 1rem;
+}
+
+.temporary-password-box p {
+  margin: 0.35rem 0 0.65rem;
+  color: #344b49;
+}
+
+.temporary-password-value {
+  display: inline-block;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #9cc9ae;
+  background: #fff;
+  color: #142a2a;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  user-select: all;
+}
+
+.temporary-password-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .users-pagination,
 .users-page-controls {
   display: flex;
@@ -860,6 +919,10 @@ body {
 
   .users-page-controls {
     justify-content: flex-start;
+  }
+
+  .temporary-password-box {
+    flex-direction: column;
   }
 
   .users-table {

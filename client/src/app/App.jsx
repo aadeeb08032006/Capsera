@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import { useAuth } from '../features/auth/AuthContext.jsx';
@@ -18,6 +18,7 @@ import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
 import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
 import ProfilePage from '../features/profiles/ProfilePage.jsx';
 import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
+import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -183,6 +184,14 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/not-authorized" element={<NotAuthorizedPage />} />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/profile"

@@ -18,7 +18,7 @@ export function errorHandler(err, _req, res, _next) {
   const isServerError = statusCode >= 500;
 
   if (isServerError) {
-    console.error('[CAPSERA API Error]:', err?.message || 'Unexpected error');
+    console.error('[CAPSERA API Error]:', err?.code || 'UNEXPECTED_ERROR');
   }
 
   return sendError(

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
 
@@ -124,6 +124,9 @@ export default function LoginPage() {
           <Link to="/signup" className="auth-link">
             Create one
           </Link>
+        </p>
+        <p className="auth-card__footer auth-recovery-note">
+          Forgot your password? Ask an administrator to reset it.
         </p>
       </div>
     </main>

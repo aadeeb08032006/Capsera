@@ -1,4 +1,4 @@
- import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { apiRequest } from '../../services/apiClient.js';
 
@@ -33,11 +33,18 @@ export default function AdminUsersPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [busyUserId, setBusyUserId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [resetResult, setResetResult] = useState(null);
+  const [copyError, setCopyError] = useState('');
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    setResetResult(null);
+    setCopyError('');
+  }, [status, role, debouncedSearch, page, pageSize]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -120,6 +127,39 @@ export default function AdminUsersPage() {
     );
   }
 
+  async function resetUserPassword(item) {
+    if (!window.confirm(`Reset the password for ${item.fullName}? A temporary password will be shown once.`)) return;
+    if (busyUserId !== null) return;
+
+    setBusyUserId(item.id);
+    setActionError('');
+    setSuccessMessage('');
+    setResetResult(null);
+    setCopyError('');
+    try {
+      const payload = await apiRequest(
+        `/admin/users/${encodeURIComponent(item.id)}/reset-password`,
+        { method: 'POST' },
+      );
+      setResetResult({ fullName: item.fullName, temporaryPassword: payload.data.temporaryPassword });
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      setActionError(getRequestErrorMessage(error));
+      if (error.status === 404) setRefreshKey((key) => key + 1);
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  async function copyTemporaryPassword() {
+    try {
+      await navigator.clipboard.writeText(resetResult.temporaryPassword);
+      setCopyError('');
+    } catch {
+      setCopyError('Could not copy the temporary password. Select and copy it manually.');
+    }
+  }
+
   const totalPages = pagination.totalPages ?? 0;
 
   return (
@@ -159,6 +199,20 @@ export default function AdminUsersPage() {
       {successMessage && <p className="page-success" role="status">{successMessage}</p>}
       {actionError && <p className="page-alert" role="alert">{actionError}</p>}
       {loadError && <p className="page-alert" role="alert">{loadError}</p>}
+      {resetResult && (
+        <section className="temporary-password-box" aria-labelledby="temporary-password-title">
+          <div>
+            <h2 id="temporary-password-title">Temporary password for {resetResult.fullName}</h2>
+            <p>Shown only once. Share it securely and ask the user to change it.</p>
+            <code className="temporary-password-value">{resetResult.temporaryPassword}</code>
+            {copyError && <p className="page-alert" role="alert">{copyError}</p>}
+          </div>
+          <div className="temporary-password-actions">
+            <button type="button" className="page-button page-button--small" onClick={copyTemporaryPassword}>Copy</button>
+            <button type="button" className="page-button page-button--small" onClick={() => setResetResult(null)}>Dismiss</button>
+          </div>
+        </section>
+      )}
 
       <section className="users-table-section" aria-label="User results">
         {isLoading ? (
@@ -197,7 +251,12 @@ export default function AdminUsersPage() {
                                 </select>
                               </>
                             )}
-                            {item.status === 'ACTIVE' && <button type="button" className="page-button page-button--small page-button--danger" disabled={isBusy} onClick={() => updateStatus(item, 'SUSPENDED', 'Suspend')}>Suspend</button>}
+                            {item.status === 'ACTIVE' && (
+                              <>
+                                <button type="button" className="page-button page-button--small page-button--danger" disabled={isBusy} onClick={() => updateStatus(item, 'SUSPENDED', 'Suspend')}>Suspend</button>
+                                {item.role !== 'ADMIN' && <button type="button" className="page-button page-button--small" disabled={isBusy} onClick={() => resetUserPassword(item)}>Reset password</button>}
+                              </>
+                            )}
                             {item.status === 'SUSPENDED' && <button type="button" className="page-button page-button--small page-button--primary" disabled={isBusy} onClick={() => updateStatus(item, 'ACTIVE', 'Reactivate')}>Reactivate</button>}
                           </div>
                         )}

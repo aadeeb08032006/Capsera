@@ -22,6 +22,7 @@ This document tracks architectural and technical decisions that refine or operat
 | OPEN-007 | Enrollment Cancellation & Re-Enrollment Policy (`enrollments`) | **UNRESOLVED (Pending Member 2 & Team Decision)** | Member 2 |
 | OPEN-008 | Migration Version Ledger (`schema_migrations`) & Execution Runner Strategy | **PROPOSED (Pending Formal Team Approval)** | All Members |
 | OPEN-009 | Durable Audit Event Persistence (`audit_logs` Infrastructure Table Proposal for PRD Section 8.1) | **APPROVED (Team Decision)** | All Members |
+| OPEN-010 | Password recovery approach (Member 1) | **PROPOSED (Pending Team Decision)** | Member 1 |
 
 ---
 
@@ -456,3 +457,11 @@ End of PRD — Version 1.0
   2. **Proposed DDL (`006_create_audit_logs.sql` upon approval):** `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`, `actor_user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL`, `event_type VARCHAR(60) NOT NULL` (`'USER_APPROVED'`, `'USER_REJECTED'`, `'USER_SUSPENDED'`, `'USER_REACTIVATED'`, `'USER_ROLE_CHANGED'`, `'CERTIFICATE_ISSUED'`, `'CERTIFICATE_REVOKED'`), `target_entity VARCHAR(60) NOT NULL`, `target_id BIGINT NOT NULL`, `details JSONB NULL` (e.g., `{ "previousRole": "TRAINEE", "newRole": "TRAINER" }`), `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`, indexed on `(target_entity, target_id, created_at DESC)` and `(actor_user_id, created_at DESC)`.
   3. **Transactional Guarantee:** Every admin governance mutation and certificate issuance/revocation writes its `audit_logs` row inside the **same** `withTransaction` block as the primary domain mutation.
   4. **Approval Required:** Members 1, 2, 3, and 4 before creating `006_create_audit_logs.sql`.
+
+### OPEN-010: Password recovery approach (Member 1)
+- **Status:** PROPOSED (Pending Team Decision)
+- **PRD Reference:** Sections 6.1 and 8.1.
+- **Proposal:** Admins reset an ACTIVE non-admin user's password through a one-time 12-character temporary password. The user changes it through the authenticated `/api/v1/auth/change-password` endpoint.
+- **Limitations:** No email delivery is included. The user is not forced to change the temporary password at first login; enforcing that would require a `users.must_change_password` column and a new migration, which needs four-member approval. JWTs are stateless, so tokens issued before a password change remain valid until expiry.
+- **Audit constraint:** Migration `006_create_audit_logs.sql` currently restricts event types and does not permit `PASSWORD_RESET_BY_ADMIN` or `PASSWORD_CHANGED`. These rows are omitted until the team approves a migration that allows them; no migration is proposed or changed here.
+- **Approval:** No approval is recorded by this proposal.

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext.jsx';
 
@@ -26,6 +25,7 @@ export default function Navbar() {
         </div>
 
         <div className="navbar-user">
+          <Link to="/change-password" className="navbar-account-link">Change password</Link>
           <span className="navbar-user-name" aria-label={`Signed in as ${user.fullName}`}>
             {user.fullName}
           </span>
