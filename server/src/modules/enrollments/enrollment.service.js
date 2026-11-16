@@ -24,7 +24,9 @@ export async function runSql(sql, params = [], client = null) {
       throw new AppError(400, 'VALIDATION_ERROR', 'Invalid identifier or parameter format');
     }
     if (error?.code === '23505') {
-      throw new AppError(409, 'CONFLICT', 'Resource conflicts with an existing record');
+      const appErr = new AppError(409, 'CONFLICT', 'Resource conflicts with an existing record');
+      appErr.constraint = error.constraint;
+      throw appErr;
     }
     if (error?.code === '23503' || error?.code === '23514') {
       throw new AppError(400, 'VALIDATION_ERROR', 'Request violates database constraints');
@@ -74,12 +76,27 @@ export async function enrollInCourse(courseId, actor) {
     throw new AppError(409, 'COURSE_NOT_PUBLISHED', 'Cannot enroll in an unpublished course');
   }
 
-  const result = await runSql(
-    `INSERT INTO enrollments (trainee_id, course_id, status)
-     VALUES ($1, $2, $3)
-     RETURNING id, trainee_id, course_id, status, enrolled_at, completed_at, cancelled_at, updated_at`,
-    [String(actor.id), String(courseId), ENROLLMENT_STATUSES.ACTIVE],
-  );
+  try {
+    const result = await runSql(
+      `INSERT INTO enrollments (trainee_id, course_id, status)
+       VALUES ($1, $2, $3)
+       RETURNING id, trainee_id, course_id, status, enrolled_at, completed_at, cancelled_at, updated_at`,
+      [String(actor.id), String(courseId), ENROLLMENT_STATUSES.ACTIVE],
+    );
 
-  return mapEnrollmentRow(result.rows[0]);
+    return mapEnrollmentRow(result.rows[0]);
+  } catch (error) {
+    if (
+      error?.code === '23505' ||
+      error?.code === 'CONFLICT' ||
+      error?.constraint === 'uq_enrollments_trainee_course'
+    ) {
+      throw new AppError(
+        409,
+        'DUPLICATE_ENROLLMENT',
+        'Trainee is already enrolled in this course',
+      );
+    }
+    throw error;
+  }
 }
