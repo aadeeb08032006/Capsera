@@ -1,52 +1,26 @@
-import { executeQuery } from '../../config/db.js';
 import { AppError } from '../../shared/AppError.js';
 import { COURSE_STATUSES, ENROLLMENT_STATUSES, ROLES, USER_STATUSES } from '../../shared/constants.js';
+import {
+  calculateCourseProgress,
+  getProgressPercentage,
+  mapEnrollmentRow,
+  runSql,
+  toIsoString,
+} from './enrollment.helpers.js';
+import {
+  checkAndApplyCourseCompletion,
+  evaluateCourseCompletion,
+} from './completion.hook.js';
 
-export function toIsoString(value) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-export async function runSql(sql, params = [], client = null) {
-  try {
-    if (client) {
-      return await client.query(sql, params);
-    }
-    return await executeQuery(sql, params);
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    if (error?.code === '22P02') {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Invalid identifier or parameter format');
-    }
-    if (error?.code === '23505') {
-      const appErr = new AppError(409, 'CONFLICT', 'Resource conflicts with an existing record');
-      appErr.constraint = error.constraint;
-      throw appErr;
-    }
-    if (error?.code === '23503' || error?.code === '23514') {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Request violates database constraints');
-    }
-    throw new AppError(500, 'INTERNAL_SERVER_ERROR', 'Database operation failed');
-  }
-}
-
-export function mapEnrollmentRow(row) {
-  return {
-    id: String(row.id),
-    traineeId: String(row.trainee_id),
-    courseId: String(row.course_id),
-    status: row.status,
-    enrolledAt: toIsoString(row.enrolled_at),
-    completedAt: toIsoString(row.completed_at),
-    cancelledAt: toIsoString(row.cancelled_at),
-    updatedAt: toIsoString(row.updated_at),
-  };
-}
+export {
+  calculateCourseProgress,
+  checkAndApplyCourseCompletion,
+  evaluateCourseCompletion,
+  getProgressPercentage,
+  mapEnrollmentRow,
+  runSql,
+  toIsoString,
+};
 
 /**
  * Enroll active trainee in a PUBLISHED course.
@@ -224,9 +198,3 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
     status: completion.isComplete ? ENROLLMENT_STATUSES.COMPLETED : enrollment.status,
   };
 }
-
-export { calculateCourseProgress, getProgressPercentage } from './progress.helpers.js';
-export {
-  checkAndApplyCourseCompletion,
-  evaluateCourseCompletion,
-} from './completion.hook.js';

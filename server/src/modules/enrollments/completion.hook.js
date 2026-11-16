@@ -1,5 +1,4 @@
-import { runSql } from './enrollment.service.js';
-import { calculateCourseProgress } from './progress.helpers.js';
+import { runSql, calculateCourseProgress } from './enrollment.helpers.js';
 import { ENROLLMENT_STATUSES } from '../../shared/constants.js';
 
 /**
