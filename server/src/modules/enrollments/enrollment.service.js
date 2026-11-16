@@ -100,3 +100,5 @@ export async function enrollInCourse(courseId, actor) {
     throw error;
   }
 }
+
+export { calculateCourseProgress, getProgressPercentage } from './progress.helpers.js';
