@@ -1,8 +1,13 @@
 import { AppError } from '../../shared/AppError.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import { sendSuccess } from '../../shared/response.js';
-import { loginUser, signupUser } from './auth.service.js';
-import { getValidationMessage, loginSchema, signupSchema } from './auth.validation.js';
+import { changeUserPassword, loginUser, signupUser } from './auth.service.js';
+import {
+  changePasswordSchema,
+  getValidationMessage,
+  loginSchema,
+  signupSchema,
+} from './auth.validation.js';
 
 function validate(schema, body) {
   const result = schema.safeParse(body);
@@ -29,3 +34,9 @@ export const logout = asyncHandler(async (_req, res) => sendSuccess(res, { logge
 export const getCurrentUser = asyncHandler(async (req, res) =>
   sendSuccess(res, { user: req.user }),
 );
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const input = validate(changePasswordSchema, req.body);
+  const result = await changeUserPassword({ userId: req.user.id, ...input });
+  return sendSuccess(res, result);
+});

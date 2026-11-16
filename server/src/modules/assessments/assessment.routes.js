@@ -8,12 +8,19 @@ import {
   deleteAssessmentHandler,
   deleteQuestionHandler,
   getAssessmentHandler,
+  getAttemptHandler,
+  getCourseFeedbackHandler,
+  getCourseResultsHandler,
   getQuestionHandler,
   listAssessmentsHandler,
+  listMyAttemptsHandler,
   listQuestionsHandler,
   publishAssessmentHandler,
+  startAttemptHandler,
+  submitAttemptHandler,
   updateAssessmentHandler,
   updateQuestionHandler,
+  upsertCourseFeedbackHandler,
 } from './assessment.controller.js';
 
 export const courseAssessmentRouter = Router({ mergeParams: true });
@@ -62,5 +69,39 @@ assessmentRouter.delete(
   requireRole(ROLES.TRAINER, ROLES.ADMIN),
   deleteQuestionHandler,
 );
+
+// ─── Attempt Initiation ───
+assessmentRouter.post(
+  '/:assessmentId/attempts',
+  requireRole(ROLES.TRAINEE),
+  startAttemptHandler,
+);
+
+export const attemptRouter = Router();
+attemptRouter.use(authenticate);
+attemptRouter.get('/me', requireRole(ROLES.TRAINEE), listMyAttemptsHandler);
+attemptRouter.get('/:attemptId', getAttemptHandler);
+attemptRouter.post(
+  '/:attemptId/submit',
+  requireRole(ROLES.TRAINEE),
+  submitAttemptHandler,
+);
+
+export const courseResultsRouter = Router({ mergeParams: true });
+courseResultsRouter.use(authenticate);
+courseResultsRouter.get(
+  '/',
+  requireRole(ROLES.TRAINER, ROLES.ADMIN),
+  getCourseResultsHandler,
+);
+
+export const courseFeedbackRouter = Router({ mergeParams: true });
+courseFeedbackRouter.use(authenticate);
+courseFeedbackRouter.post(
+  '/',
+  requireRole(ROLES.TRAINEE),
+  upsertCourseFeedbackHandler,
+);
+courseFeedbackRouter.get('/', getCourseFeedbackHandler);
 
 export default assessmentRouter;

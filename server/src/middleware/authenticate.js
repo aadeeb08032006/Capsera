@@ -18,7 +18,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 
   let decoded;
   try {
-    decoded = jwt.verify(token, env.jwtSecret);
+    decoded = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] });
   } catch (err) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Invalid or expired authentication token');
   }

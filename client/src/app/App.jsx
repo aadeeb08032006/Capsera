@@ -1,8 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { Link, Routes, Route } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
+import { useAuth } from '../features/auth/AuthContext.jsx';
+
+import Navbar from '../components/Navbar.jsx';
+import ProtectedRoute from '../features/auth/ProtectedRoute.jsx';
+import LoginPage from '../features/auth/LoginPage.jsx';
+import SignupPage from '../features/auth/SignupPage.jsx';
+import NotAuthorizedPage from '../features/auth/NotAuthorizedPage.jsx';
+import DashboardPage from '../features/auth/DashboardPage.jsx';
+
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
+import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
+import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
+import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
+import ProfilePage from '../features/profiles/ProfilePage.jsx';
+import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
+import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -73,18 +89,150 @@ function FoundationHomePage() {
         </p>
       </section>
 
+      <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
+        <h2>Member 3: Assessments &amp; Evaluations Portal</h2>
+        <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
+          Interactive interfaces for instructors to author MCQ assessments and analyze student evaluations.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <Link
+            to="/courses/1/assessments/manage"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ✏️ Trainer Quiz Builder
+          </Link>
+          <Link
+            to="/courses/1/assessments/results"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f1f5f9',
+              color: '#334155',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #cbd5e1',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            📊 Course Results &amp; Analytics
+          </Link>
+          <Link
+            to="/courses/1/assessments/1/player"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#10b981',
+              color: '#ffffff',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            🚀 Trainee Quiz Player
+          </Link>
+          <Link
+            to="/courses/1/feedback"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.6rem 1.1rem',
+              backgroundColor: '#f8fafc',
+              color: '#d97706',
+              textDecoration: 'none',
+              borderRadius: '0.5rem',
+              border: '1px solid #fde68a',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            ⭐ Course Feedback &amp; Ratings
+          </Link>
+        </div>
+      </section>
+
       <AnnouncementsFeedSection />
     </main>
   );
 }
 
 export default function App() {
+  const { user } = useAuth();
+
   return (
-    <Routes>
-      <Route path="/" element={<FoundationHomePage />} />
-      <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
-      <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
-    </Routes>
+    <>
+      {user && <Navbar />}
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/not-authorized" element={<NotAuthorizedPage />} />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER']}>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected root - redirects to login if not signed in */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Legacy foundation routes preserved (accessible without auth for now) */}
+        <Route path="/foundation" element={<FoundationHomePage />} />
+        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
+        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
+        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
+      </Routes>
+    </>
   );
 }
-

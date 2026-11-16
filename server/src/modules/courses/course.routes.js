@@ -13,6 +13,7 @@ import {
 } from './course.controller.js';
 import { courseLessonRoutes } from './lesson.routes.js';
 import { courseResourceRoutes } from './resource.routes.js';
+import { courseEnrollmentRoutes } from '../enrollments/enrollment.routes.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.delete('/:courseId', requireRole(ROLES.TRAINER, ROLES.ADMIN), deleteCours
 
 router.use('/:courseId/lessons', courseLessonRoutes);
 router.use('/:courseId/resources', courseResourceRoutes);
+router.use('/:courseId/enrollments', courseEnrollmentRoutes);
 
 export default router;
 

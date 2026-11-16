@@ -61,6 +61,17 @@ describe('Auth Middleware', () => {
     expect(res.body.error.code).toBe('UNAUTHENTICATED');
   });
 
+  it('rejects a JWT signed with an algorithm other than HS256', async () => {
+    const token = jwt.sign({ sub: '40' }, env.jwtSecret, { algorithm: 'HS384', expiresIn: '1h' });
+    const res = await request(app)
+      .get('/test/protected')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+    expect(executeQuery).not.toHaveBeenCalled();
+  });
+
   it('rejects requests with expired token (401 UNAUTHENTICATED)', async () => {
     const expiredToken = jwt.sign({ sub: '10' }, env.jwtSecret, { expiresIn: '-1s' });
     const res = await request(app)
