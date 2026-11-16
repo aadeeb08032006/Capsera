@@ -192,7 +192,24 @@ describe.runIf(runPgIntegration)(
     }
 
     async function cleanupTestRecords() {
-      if (createdCourseIds.length > 0 && createdUserIds.length > 0) {
+      if (
+        createdCertificateIds.length > 0 ||
+        createdUserIds.length > 0 ||
+        createdCourseIds.length > 0
+      ) {
+        await executeQuery(
+          `DELETE FROM audit_logs
+           WHERE target_entity = 'certificates'
+             AND target_id IN (
+               SELECT id
+               FROM certificates
+               WHERE id = ANY($1::bigint[])
+                  OR trainee_id = ANY($2::bigint[])
+                  OR course_id = ANY($3::bigint[])
+             )`,
+          [createdCertificateIds, createdUserIds, createdCourseIds],
+        );
+
         await executeQuery(
           `DELETE FROM certificates
            WHERE id = ANY($1::bigint[])
@@ -200,10 +217,6 @@ describe.runIf(runPgIntegration)(
               OR course_id = ANY($3::bigint[])`,
           [createdCertificateIds, createdUserIds, createdCourseIds],
         );
-      } else if (createdCertificateIds.length > 0) {
-        await executeQuery('DELETE FROM certificates WHERE id = ANY($1::bigint[])', [
-          createdCertificateIds,
-        ]);
       }
 
       if (createdAttemptIds.length > 0 || createdUserIds.length > 0) {
@@ -420,11 +433,38 @@ describe.runIf(runPgIntegration)(
       );
       expect(countRes.rows[0].count).toBe(1);
 
-      // 2. Repeated call returns existing certificate
+      const concurrentAuditRes = await executeQuery(
+        `SELECT actor_user_id, event_type, target_entity, target_id, details
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1`,
+        [first.certificate.id],
+      );
+      expect(concurrentAuditRes.rows).toHaveLength(1);
+      expect(concurrentAuditRes.rows[0].actor_user_id).toBeNull();
+      expect(concurrentAuditRes.rows[0].event_type).toBe('CERTIFICATE_ISSUED');
+      expect(concurrentAuditRes.rows[0].target_entity).toBe('certificates');
+      expect(String(concurrentAuditRes.rows[0].target_id)).toBe(String(first.certificate.id));
+      expect(concurrentAuditRes.rows[0].details).toEqual({
+        traineeId: String(traineeUser.id),
+        courseId: String(course.id),
+        certificateCode: first.certificate.certificateCode,
+      });
+
+      // 2. Repeated call returns existing certificate and creates no additional audit event
       const repeated = await issueCertificateIfEligible(traineeUser.id, course.id);
       expect(repeated.issued).toBe(false);
       expect(repeated.reason).toBe('ALREADY_ISSUED');
       expect(repeated.certificate.id).toBe(first.certificate.id);
+
+      const auditAfterRepeatRes = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1`,
+        [first.certificate.id],
+      );
+      expect(auditAfterRepeatRes.rows[0].count).toBe(1);
 
       // 3. Direct SQL insert violates uq_certificates_trainee_course (23505) & uq_certificates_code (23505)
       await expect(
@@ -465,6 +505,25 @@ describe.runIf(runPgIntegration)(
         first.certificate.certificateCode,
       );
 
+      const collisionAuditRes = await executeQuery(
+        `SELECT actor_user_id, event_type, target_entity, target_id, details
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1`,
+        [collidedRetryResult.certificate.id],
+      );
+      expect(collisionAuditRes.rows).toHaveLength(1);
+      expect(collisionAuditRes.rows[0].actor_user_id).toBeNull();
+      expect(collisionAuditRes.rows[0].event_type).toBe('CERTIFICATE_ISSUED');
+      expect(String(collisionAuditRes.rows[0].target_id)).toBe(
+        String(collidedRetryResult.certificate.id),
+      );
+      expect(collisionAuditRes.rows[0].details).toEqual({
+        traineeId: String(otherTraineeUser.id),
+        courseId: String(otherCourse.id),
+        certificateCode: collidedRetryResult.certificate.certificateCode,
+      });
+
       // 5. Failed outer transaction using optional { client } leaves zero partial enrollment/certificate changes
       const rollbackCourse = await seedCourse({ title: 'Rollback-Course' });
       const rollbackLesson = await seedLesson(rollbackCourse.id, 1, 'Rollback Lesson');
@@ -493,6 +552,67 @@ describe.runIf(runPgIntegration)(
         [traineeUser.id, rollbackCourse.id],
       );
       expect(rollbackCertCheck.rows[0].count).toBe(0);
+
+      const rollbackAuditCheck = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND details->>'traineeId' = $1
+           AND details->>'courseId' = $2`,
+        [String(traineeUser.id), String(rollbackCourse.id)],
+      );
+      expect(rollbackAuditCheck.rows[0].count).toBe(0);
+    });
+
+    it('rolls back certificate and enrollment writes in PostgreSQL when audit log insertion fails', async () => {
+      const course = await seedCourse({ title: 'Audit-Failure-Rollback' });
+      const lesson = await seedLesson(course.id, 1, 'Lesson 1');
+      const enrollment = await seedEnrollment(traineeUser.id, course.id, 'ACTIVE');
+      await markLessonCompleted(enrollment.id, course.id, lesson);
+
+      await expect(
+        withTransaction(async (client) => {
+          const originalQuery = client.query.bind(client);
+          const querySpy = vi.spyOn(client, 'query').mockImplementation((sql, params) => {
+            if (typeof sql === 'string' && sql.includes('INSERT INTO audit_logs')) {
+              return Promise.reject(new Error('Simulated audit_logs write failure'));
+            }
+            return originalQuery(sql, params);
+          });
+
+          try {
+            return await issueCertificateIfEligible(traineeUser.id, course.id, { client });
+          } finally {
+            querySpy.mockRestore();
+          }
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
+
+      const enrollCheck = await executeQuery(
+        'SELECT status, completed_at FROM enrollments WHERE id = $1',
+        [enrollment.id],
+      );
+      expect(enrollCheck.rows[0].status).toBe('ACTIVE');
+      expect(enrollCheck.rows[0].completed_at).toBeNull();
+
+      const certCheck = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, course.id],
+      );
+      expect(certCheck.rows[0].count).toBe(0);
+
+      const auditCheck = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND details->>'traineeId' = $1
+           AND details->>'courseId' = $2`,
+        [String(traineeUser.id), String(course.id)],
+      );
+      expect(auditCheck.rows[0].count).toBe(0);
     });
 
     it('serves read-only paginated GET /me certificates and privacy-preserving public verification for valid, revoked, and missing codes', async () => {
