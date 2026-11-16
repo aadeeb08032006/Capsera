@@ -547,11 +547,240 @@ Request:
 ### 6.5 Certificates, Announcements & Admin Dashboard (Owner: Member 4)
 | Method & Path | Access | Contract Status |
 |---|---|---|
-| `GET /api/v1/certificates/me` | `TRAINEE` | **UNRESOLVED:** Certificate DTO fields & trigger timing (automatic on completion vs on-demand) |
-| `GET /api/v1/certificates/verify/:certificateCode` | Public | **UNRESOLVED:** Minimal public verification fields (privacy-preserving) |
-| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (all) | **UNRESOLVED:** Category enum values & pagination |
-| `POST /api/v1/announcements` | `ADMIN` | **UNRESOLVED:** Create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
-| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **UNRESOLVED:** Edit/publish/archive payload |
-| `GET /api/v1/admin/dashboard/summary` | `ADMIN` | **UNRESOLVED:** Exact metric keys for users, courses, enrollments, attempts, certificates |
-| `GET /api/v1/admin/dashboard/assessment-performance` | `ADMIN` | **UNRESOLVED:** Pass rate / subject breakdown response structure |
+| `GET /api/v1/certificates/me` | `TRAINEE` | **PROPOSED (Member 4):** Pending team approval on Certificate DTO & Member 2/3 completion hook integration |
+| `GET /api/v1/certificates/verify/:certificateCode` | Public | **PROPOSED (Member 4):** Pending team approval on minimal public verification fields (privacy-preserving) |
+| `GET /api/v1/announcements` | Public (published & non-expired) / `ADMIN` (`scope=admin`) | **PROPOSED (Member 4):** Pending team approval on category enum, `scope=admin` filter, and pagination DTO |
+| `POST /api/v1/announcements` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on create payload (`title`, `body`, `category`, `status`, `expiresAt`) |
+| `PATCH /api/v1/announcements/:announcementId` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on edit/publish/archive payload and terminal `ARCHIVED` transition |
+| `GET /api/v1/admin/dashboard/summary` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on summary DTO fields and completion rate denominator (`completed / (active + completed) * 100`) |
+| `GET /api/v1/admin/dashboard/assessment-performance` | `ADMIN` | **PROPOSED (Member 4):** Pending team approval on overall/subject DTO fields, `Unspecified` grouping, pass rate denominator, and `null` average convention |
+
+#### GET /api/v1/certificates/me (`TRAINEE`, PROPOSED)
+Returns paginated completion certificates earned by the authenticated `ACTIVE` `TRAINEE` (`PRD` Section 6.7 & `FR-11`). This endpoint is strictly read-only and does not issue certificates on retrieval.
+
+> **PROPOSED (Member 4):** Pending team approval on DTO fields, issuance trigger integration (`OPEN-004` / `SCHEMA-M4-02`), and durable issuance audit-log persistence (`OPEN-009` in `docs/DECISIONS.md`). Live automatic certificate issuance remains pending until Member 2 (`PATCH /api/v1/enrollments/:enrollmentId/progress`) and Member 3 (`POST /api/v1/attempts/:attemptId/submit`) invoke the shared transactional helper (`issueCertificateIfEligible`).
+
+Query parameters:
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "1",
+        "traineeId": "25",
+        "courseId": "4",
+        "courseTitle": "Foundations of Cloud Security",
+        "courseSubject": "Security",
+        "certificateCode": "CAP-A1B2-C3D4-E5F6",
+        "issuedAt": "2026-11-14T09:30:00.000Z",
+        "revokedAt": null,
+        "isValid": true,
+        "status": "VALID"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### GET /api/v1/certificates/verify/:certificateCode (Public, PROPOSED)
+Publicly verifies a certificate code against PostgreSQL without requiring authentication (`PRD` Section 6.7 & 8.2). Never exposes user emails, internal user/certificate/course IDs, or assessment scores.
+
+> **PROPOSED (Member 4):** Pending team approval on minimal public verification fields and revocation status representation (`OPEN-004`). Admin revocation endpoints remain out of scope unless approved.
+
+Path parameter:
+- `certificateCode`: trimmed alphanumeric/hyphen string (`1..64` chars, matched case-insensitively).
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "certificate": {
+      "certificateCode": "CAP-A1B2-C3D4-E5F6",
+      "traineeName": "Asha Verma",
+      "courseTitle": "Foundations of Cloud Security",
+      "issuedAt": "2026-11-14T09:30:00.000Z",
+      "revokedAt": null,
+      "isValid": true,
+      "status": "VALID"
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 404 `CERTIFICATE_NOT_FOUND`.
+
+#### GET /api/v1/announcements (Public / `ADMIN`, PROPOSED)
+Returns paginated homepage announcements (`PRD` Section 6.10 & `FR-12`).
+
+> **PROPOSED (Member 4):** Pending team approval on query filters (`category`, `scope=admin`, `status`), response DTO, and pagination fields.
+
+Query parameters:
+- `category` (optional: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`)
+- `scope` (optional: `public` default | `admin` for `ACTIVE` `ADMIN` users only)
+- `status` (optional, allowed only when `scope=admin`: `DRAFT` | `PUBLISHED` | `ARCHIVED`)
+- `page` (optional, positive integer, default `1`)
+- `pageSize` (optional, integer `1..100`, default `20`)
+
+Visibility rules:
+- `scope=public`: returns only `status = 'PUBLISHED' AND published_at <= NOW() AND (expires_at IS NULL OR expires_at > NOW())`, ordered by `published_at DESC, id DESC`.
+- `scope=admin` (authenticated `ACTIVE` `ADMIN` only): returns all matching rows (`DRAFT`, `PUBLISHED`, `ARCHIVED`, including expired entries), ordered by `updated_at DESC, id DESC`.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "10",
+        "creatorId": "1",
+        "creatorName": "Platform Admin",
+        "title": "Spring Onboarding Open",
+        "body": "Enrollment for Q2 foundational modules is now open.",
+        "category": "ANNOUNCEMENT",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-14T08:00:00.000Z",
+        "expiresAt": null,
+        "createdAt": "2026-11-14T07:55:00.000Z",
+        "updatedAt": "2026-11-14T08:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "totalItems": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED` (`scope=admin`/`status` without token or invalid token), 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### POST /api/v1/announcements (`ADMIN`, PROPOSED)
+Creates a new announcement as `DRAFT` (default) or immediately `PUBLISHED`. Creator ownership is derived from `req.user.id`.
+
+Request:
+```json
+{
+  "title": "Spring Onboarding Open",
+  "body": "Enrollment for Q2 foundational modules is now open.",
+  "category": "ANNOUNCEMENT",
+  "status": "DRAFT",
+  "expiresAt": "2026-12-01T00:00:00.000Z"
+}
+```
+- `category`: `ANNOUNCEMENT` | `ACHIEVEMENT` | `NEW_CONTENT`.
+- `status`: optional `DRAFT` (default) | `PUBLISHED` (sets `publishedAt` automatically on creation).
+- `expiresAt`: optional nullable ISO 8601 datetime with timezone (`expiresAt > publishedAt` required when published).
+- Unknown fields (such as `creatorId` or `publishedAt`) are rejected with `400 VALIDATION_ERROR`.
+
+Response `201`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### PATCH /api/v1/announcements/:announcementId (`ADMIN`, PROPOSED)
+Updates announcement content (`title`, `body`, `category`, `expiresAt`), publishes (`DRAFT -> PUBLISHED`), or archives (`DRAFT -> ARCHIVED`, `PUBLISHED -> ARCHIVED`). `ARCHIVED` is terminal (cannot be edited or restored); `PUBLISHED -> DRAFT` is rejected with `409 CONFLICT`.
+
+Request: `{ "title"?, "body"?, "category"?, "status"?, "expiresAt"? }` (at least one field required).
+Response `200`: `{ "success": true, "data": { "announcement": { ... } } }`.
+Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `ANNOUNCEMENT_NOT_FOUND`, 409 `CONFLICT`.
+
+#### GET /api/v1/admin/dashboard/summary (`ADMIN`, PROPOSED)
+Returns live database-backed aggregate counts and summary metrics across users, courses, enrollments, assessments, attempts, certificates, and participation (`PRD` Section 6.11 & `FR-14`). Exposes only aggregate counts/rates (never user emails, names, internal IDs, or individual trainee records).
+
+> **PROPOSED (Member 4):** Pending team approval on response structure and enrollment completion rate denominator:
+> - `completionRate = completed / (active + completed) * 100` (rounded to 2 decimal places; `cancelled` excluded from denominator).
+> - When `(active + completed) === 0` (empty or zero eligible denominator), `completionRate` is `0`.
+> - All empty-table counts return `0`.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "users": {
+      "total": 25,
+      "byRole": { "TRAINEE": 19, "TRAINER": 5, "ADMIN": 1 },
+      "byStatus": { "PENDING": 3, "ACTIVE": 20, "REJECTED": 1, "SUSPENDED": 1 }
+    },
+    "courses": {
+      "total": 8,
+      "byStatus": { "DRAFT": 2, "PUBLISHED": 5, "ARCHIVED": 1 }
+    },
+    "enrollments": {
+      "total": 30,
+      "byStatus": { "ACTIVE": 18, "COMPLETED": 9, "CANCELLED": 3 },
+      "completionRate": 33.33
+    },
+    "assessments": {
+      "total": 10,
+      "byStatus": { "DRAFT": 2, "PUBLISHED": 7, "CLOSED": 1 }
+    },
+    "attempts": {
+      "total": 40,
+      "byStatus": { "IN_PROGRESS": 3, "SUBMITTED": 0, "GRADED": 35, "EXPIRED": 2 },
+      "passedCount": 28
+    },
+    "certificates": {
+      "totalIssued": 9,
+      "validCount": 8,
+      "revokedCount": 1
+    },
+    "participation": {
+      "enrolledTrainees": 21,
+      "attemptingTrainees": 17
+    }
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
+
+#### GET /api/v1/admin/dashboard/assessment-performance (`ADMIN`, PROPOSED)
+Returns platform-wide overall assessment metrics and a course-subject breakdown grouped by `courses.subject` (`PRD` Section 6.11 & `FR-14`).
+
+> **PROPOSED (Member 4):** Pending team approval on overall/subject DTO conventions:
+> - **Subject grouping:** Uses trimmed `courses.subject`; missing (`NULL`) or blank subjects are grouped as `"Unspecified"`, ordered alphabetically (`bySubject` is `[]` when no courses exist).
+> - **Pass rate denominator:** `passed graded attempts / total graded attempts * 100` (rounded to 2 decimal places); returns `0` when graded attempts denominator is `0`.
+> - **Null average convention:** `averageScorePercentage` computes the average across `GRADED` attempts only (rounded to 2 decimal places) and is `null` when there are zero `GRADED` attempts.
+
+Response `200`:
+```json
+{
+  "success": true,
+  "data": {
+    "overall": {
+      "totalAssessments": 10,
+      "totalAttempts": 40,
+      "gradedAttempts": 35,
+      "passedAttempts": 28,
+      "passRate": 80,
+      "averageScorePercentage": 76.45
+    },
+    "bySubject": [
+      {
+        "subject": "Meteorology",
+        "courseCount": 3,
+        "assessmentCount": 5,
+        "attemptCount": 20,
+        "gradedAttemptCount": 18,
+        "passedAttemptCount": 15,
+        "passRate": 83.33,
+        "averageScorePercentage": 79.12
+      }
+    ]
+  }
+}
+```
+Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`.
 
