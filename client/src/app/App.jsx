@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
+import { AuthProvider } from '../features/auth/AuthContext.jsx';
+import RoleGuard from '../features/auth/RoleGuard.jsx';
+import Navbar from '../features/courses/Navbar.jsx';
+import CourseCataloguePage from '../features/courses/CourseCataloguePage.jsx';
+import CourseDetailPage from '../features/courses/CourseDetailPage.jsx';
+import MyLearningPage from '../features/courses/MyLearningPage.jsx';
+import LessonViewerPage from '../features/courses/LessonViewerPage.jsx';
+import TrainerCoursesPage from '../features/courses/TrainerCoursesPage.jsx';
+import CourseFormPage from '../features/courses/CourseFormPage.jsx';
+import ManageLessonsPage from '../features/courses/ManageLessonsPage.jsx';
+import '../features/courses/courses.css';
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -72,9 +83,72 @@ function FoundationHomePage() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<FoundationHomePage />} />
-    </Routes>
+    <AuthProvider>
+      <Navbar />
+      <Routes>
+        {/* Redirect root to Course Catalogue */}
+        <Route path="/" element={<Navigate to="/courses" replace />} />
+        <Route path="/foundation" element={<FoundationHomePage />} />
+
+        {/* Public & Trainee Course Routes */}
+        <Route path="/courses" element={<CourseCataloguePage />} />
+        <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+        <Route
+          path="/courses/:courseId/lessons/:lessonId"
+          element={
+            <RoleGuard allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
+              <LessonViewerPage />
+            </RoleGuard>
+          }
+        />
+
+        {/* Trainee Learning Routes (Trainee only) */}
+        <Route
+          path="/my-learning"
+          element={
+            <RoleGuard allowedRoles={['TRAINEE']}>
+              <MyLearningPage />
+            </RoleGuard>
+          }
+        />
+
+        {/* Trainer Course Management Routes (Trainer & Admin only) */}
+        <Route
+          path="/trainer/courses"
+          element={
+            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerCoursesPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/trainer/courses/new"
+          element={
+            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+              <CourseFormPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/trainer/courses/:courseId/edit"
+          element={
+            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+              <CourseFormPage />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/trainer/courses/:courseId/lessons"
+          element={
+            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+              <ManageLessonsPage />
+            </RoleGuard>
+          }
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/courses" replace />} />
+      </Routes>
+    </AuthProvider>
   );
 }
-

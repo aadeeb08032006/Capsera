@@ -12,13 +12,16 @@ export async function apiRequest(endpoint, options = {}) {
   const normalizedPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${API_BASE_URL}${normalizedPath}`;
 
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(options.headers || {}),
+  };
+
   const response = await fetch(url, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
     ...options,
+    headers,
   });
 
   const payload = await response.json().catch(() => null);
@@ -27,6 +30,7 @@ export async function apiRequest(endpoint, options = {}) {
     const error = new Error(payload?.error?.message || `Request failed with status ${response.status}`);
     error.code = payload?.error?.code || 'HTTP_ERROR';
     error.status = response.status;
+    error.data = payload?.data || null;
     throw error;
   }
 
