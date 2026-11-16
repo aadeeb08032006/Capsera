@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
+import { useAuth } from '../features/auth/AuthContext.jsx';
+
+import Navbar from '../components/Navbar.jsx';
+import ProtectedRoute from '../features/auth/ProtectedRoute.jsx';
+import LoginPage from '../features/auth/LoginPage.jsx';
+import SignupPage from '../features/auth/SignupPage.jsx';
+import NotAuthorizedPage from '../features/auth/NotAuthorizedPage.jsx';
+import DashboardPage from '../features/auth/DashboardPage.jsx';
+
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
 import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
@@ -78,7 +87,7 @@ function FoundationHomePage() {
       </section>
 
       <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
-        <h2>Member 3: Assessments & Evaluations Portal</h2>
+        <h2>Member 3: Assessments &amp; Evaluations Portal</h2>
         <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
           Interactive interfaces for instructors to author MCQ assessments and analyze student evaluations.
         </p>
@@ -116,7 +125,7 @@ function FoundationHomePage() {
               fontSize: '0.9rem',
             }}
           >
-            📊 Course Results & Analytics
+            📊 Course Results &amp; Analytics
           </Link>
           <Link
             to="/courses/1/assessments/1/player"
@@ -151,7 +160,7 @@ function FoundationHomePage() {
               fontSize: '0.9rem',
             }}
           >
-            ⭐ Course Feedback & Ratings
+            ⭐ Course Feedback &amp; Ratings
           </Link>
         </div>
       </section>
@@ -162,20 +171,40 @@ function FoundationHomePage() {
 }
 
 export default function App() {
+  const { user } = useAuth();
+
   return (
-    <Routes>
-      <Route path="/" element={<FoundationHomePage />} />
-      <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
-      <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
-      <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
-      <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
-      <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
-      <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
-      <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
-      <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
-      <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
-      <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
-    </Routes>
+    <>
+      {user && <Navbar />}
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/not-authorized" element={<NotAuthorizedPage />} />
+
+        {/* Protected root - redirects to login if not signed in */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Legacy foundation routes preserved (accessible without auth for now) */}
+        <Route path="/foundation" element={<FoundationHomePage />} />
+        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
+        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
+        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
+      </Routes>
+    </>
   );
 }
-
