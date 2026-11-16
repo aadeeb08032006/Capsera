@@ -25,6 +25,7 @@ import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.r
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
 import announcementRoutes from './modules/announcements/announcements.routes.js';
 import certificateRoutes from './modules/certificates/certificates.routes.js';
+import profileRouter from './modules/profiles/profile.routes.js';
 
 const app = express();
 
@@ -98,6 +99,7 @@ apiRouter.use('/enrollments', enrollmentRoutes);
 apiRouter.use('/assessments', assessmentRouter);
 apiRouter.use('/attempts', attemptRouter);
 apiRouter.use('/skills', skillsRoutes);
+apiRouter.use('/profiles', profileRouter);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);
 apiRouter.use('/announcements', announcementRoutes);
