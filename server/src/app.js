@@ -9,6 +9,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import authRouter from './modules/auth/auth.routes.js';
 import courseRoutes from './modules/courses/course.routes.js';
 import { lessonRoutes } from './modules/courses/lesson.routes.js';
+import enrollmentRoutes from './modules/enrollments/enrollment.routes.js';
 import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.routes.js';
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
 
@@ -75,6 +76,7 @@ apiRouter.get('/health', async (req, res, next) => {
 // Mount /api/v1 prefix (Feature module routers will be registered here by Members 1–4)
 apiRouter.use('/courses', courseRoutes);
 apiRouter.use('/lessons', lessonRoutes);
+apiRouter.use('/enrollments', enrollmentRoutes);
 apiRouter.use('/skills', skillsRoutes);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);
