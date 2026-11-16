@@ -20,8 +20,31 @@ export default function Navbar() {
         </Link>
 
         <div className="navbar-links">
-          {(user.role === 'TRAINEE' || user.role === 'TRAINER') && <Link to="/profile">Profile</Link>}
-          {user.role === 'ADMIN' && <Link to="/admin/users">Users</Link>}
+          {user.role === 'ADMIN' && (
+            <>
+              <Link to="/admin/dashboard">Admin Dashboard</Link>
+              <Link to="/admin/users">Users</Link>
+              <Link to="/admin/skills">Skill Catalogue</Link>
+              <Link to="/admin/announcements">Announcements</Link>
+              <Link to="/trainers/recommendations">Trainer Recommendations</Link>
+            </>
+          )}
+
+          {user.role === 'TRAINER' && (
+            <>
+              <Link to="/profile">Profile</Link>
+              <Link to="/trainer/skills">My Trainer Skills</Link>
+            </>
+          )}
+
+          {user.role === 'TRAINEE' && (
+            <>
+              <Link to="/profile">Profile</Link>
+              <Link to="/skills">My Skills</Link>
+              <Link to="/trainers/recommendations">Trainer Recommendations</Link>
+              <Link to="/certificates">My Certificates</Link>
+            </>
+          )}
         </div>
 
         <div className="navbar-user">
