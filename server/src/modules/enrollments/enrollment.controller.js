@@ -8,3 +8,8 @@ export const enrollInCourseHandler = asyncHandler(async (req, res) => {
   const enrollment = await enrollmentService.enrollInCourse(courseId, req.user);
   return sendSuccess(res, { enrollment }, 201);
 });
+
+export const getMyEnrollmentsHandler = asyncHandler(async (req, res) => {
+  const enrollments = await enrollmentService.getMyEnrollments(req.user);
+  return sendSuccess(res, { enrollments, items: enrollments });
+});

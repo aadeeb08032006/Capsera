@@ -101,4 +101,58 @@ export async function enrollInCourse(courseId, actor) {
   }
 }
 
+/**
+ * Retrieve all enrollments for the logged-in trainee, each with dynamic progress percentage.
+ */
+export async function getMyEnrollments(actor) {
+  if (actor.role !== ROLES.TRAINEE) {
+    throw new AppError(403, 'FORBIDDEN', 'Only trainees can view their enrollments');
+  }
+
+  const result = await runSql(
+    `SELECT e.id,
+            e.trainee_id,
+            e.course_id,
+            e.status,
+            e.enrolled_at,
+            e.completed_at,
+            e.cancelled_at,
+            e.updated_at,
+            c.title AS course_title,
+            c.summary AS course_summary,
+            c.subject AS course_subject,
+            c.level AS course_level,
+            c.thumbnail_url AS course_thumbnail_url,
+            c.status AS course_status
+     FROM enrollments e
+     JOIN courses c ON c.id = e.course_id
+     WHERE e.trainee_id = $1
+     ORDER BY e.enrolled_at DESC, e.id DESC`,
+    [String(actor.id)],
+  );
+
+  const enrollments = [];
+  for (const row of result.rows) {
+    const progress = await calculateCourseProgress(row.course_id, row.id);
+    enrollments.push({
+      ...mapEnrollmentRow(row),
+      courseTitle: row.course_title,
+      progressPercentage: progress.progressPercentage,
+      completedLessons: progress.completedLessons,
+      totalLessons: progress.totalLessons,
+      course: {
+        id: String(row.course_id),
+        title: row.course_title,
+        summary: row.course_summary ?? null,
+        subject: row.course_subject ?? null,
+        level: row.course_level ?? null,
+        thumbnailUrl: row.course_thumbnail_url ?? null,
+        status: row.course_status,
+      },
+    });
+  }
+
+  return enrollments;
+}
+
 export { calculateCourseProgress, getProgressPercentage } from './progress.helpers.js';
