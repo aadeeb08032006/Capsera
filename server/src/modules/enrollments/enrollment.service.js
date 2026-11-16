@@ -205,6 +205,13 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
 
   const progress = await calculateCourseProgress(enrollment.course_id, enrollment.id);
 
+  // Evaluate course completion hook (all lessons done + required published assessments passed)
+  const completion = await checkAndApplyCourseCompletion(
+    enrollment.course_id,
+    enrollment.id,
+    actor.id,
+  );
+
   return {
     enrollmentId: String(enrollment.id),
     courseId: String(enrollment.course_id),
@@ -213,7 +220,13 @@ export async function markLessonComplete(enrollmentId, lessonId, actor) {
     progressPercentage: progress.progressPercentage,
     completedLessons: progress.completedLessons,
     totalLessons: progress.totalLessons,
+    isComplete: completion.isComplete,
+    status: completion.isComplete ? ENROLLMENT_STATUSES.COMPLETED : enrollment.status,
   };
 }
 
 export { calculateCourseProgress, getProgressPercentage } from './progress.helpers.js';
+export {
+  checkAndApplyCourseCompletion,
+  evaluateCourseCompletion,
+} from './completion.hook.js';
