@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
+import { useAuth } from '../features/auth/AuthContext.jsx';
 
 import Navbar from '../components/Navbar.jsx';
 import ProtectedRoute from '../features/auth/ProtectedRoute.jsx';
@@ -202,6 +203,8 @@ function FoundationHomePage() {
 }
 
 export default function App() {
+  const { user } = useAuth();
+
   return (
     <>
       <Navbar />

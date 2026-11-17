@@ -25,6 +25,7 @@ import skillsRoutes, { profileSkillsRoutes } from './modules/competency/skills.r
 import trainerRecommendationRoutes from './modules/competency/recommendations.routes.js';
 import announcementRoutes from './modules/announcements/announcements.routes.js';
 import certificateRoutes from './modules/certificates/certificates.routes.js';
+import profileRouter from './modules/profiles/profile.routes.js';
 
 const app = express();
 
@@ -33,9 +34,9 @@ app.use(helmet());
 app.use(
   cors({
     origin: env.clientOrigin,
-    credentials: true,
   }),
 );
+// Set app.set('trust proxy', 1) only behind a known trusted proxy so rate limits use client IPs.
 const defaultJsonParser = express.json({ limit: '1mb' });
 const authJsonParser = express.json({ limit: '10kb' });
 const authPath = `${env.apiPrefix.replace(/\/$/, '')}/auth`.toLowerCase();
@@ -98,6 +99,7 @@ apiRouter.use('/enrollments', enrollmentRoutes);
 apiRouter.use('/assessments', assessmentRouter);
 apiRouter.use('/attempts', attemptRouter);
 apiRouter.use('/skills', skillsRoutes);
+apiRouter.use('/profiles', profileRouter);
 apiRouter.use('/profiles', profileSkillsRoutes);
 apiRouter.use('/trainers', trainerRecommendationRoutes);
 apiRouter.use('/announcements', announcementRoutes);

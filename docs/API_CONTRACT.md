@@ -82,11 +82,11 @@
 
 | Code | Status |
 |---|---|
-| `VALIDATION_ERROR` | 400 |
+| `VALIDATION_ERROR`, `INVALID_CURRENT_PASSWORD` | 400 |
 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS` | 401 |
 | `FORBIDDEN`, `ACCOUNT_PENDING`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `NOT_ENROLLED`, `ENROLLMENT_INACTIVE` | 403 |
 | `USER_NOT_FOUND`, `COURSE_NOT_FOUND`, `ASSESSMENT_NOT_FOUND`, `QUESTION_NOT_FOUND`, `ATTEMPT_NOT_FOUND` | 404 |
-| `EMAIL_ALREADY_REGISTERED`, `INVALID_STATUS_TRANSITION`, `ROLE_CHANGE_NOT_ALLOWED`, `ASSESSMENT_LOCKED`, `ASSESSMENT_EMPTY`, `ASSESSMENT_NOT_PUBLISHED`, `COURSE_NOT_PUBLISHED`, `DEADLINE_PASSED`, `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_EXPIRED`, `DUPLICATE_QUESTION_ORDER` | 409 |
+| `EMAIL_ALREADY_REGISTERED`, `INVALID_STATUS_TRANSITION`, `ROLE_CHANGE_NOT_ALLOWED`, `PASSWORD_RESET_NOT_ALLOWED`, `ASSESSMENT_LOCKED`, `ASSESSMENT_EMPTY`, `ASSESSMENT_NOT_PUBLISHED`, `COURSE_NOT_PUBLISHED`, `DEADLINE_PASSED`, `ATTEMPT_LIMIT_REACHED`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_EXPIRED`, `DUPLICATE_QUESTION_ORDER` | 409 |
 | `RATE_LIMITED` | 429 |
 
 ---
@@ -154,6 +154,14 @@ Request: `{ "email": "...", "password": "..." }`
 #### POST /api/v1/auth/logout (authenticated)
 Response `200`: `{ "loggedOut": true }`. The server keeps no session; the client discards the token.
 
+#### POST /api/v1/auth/change-password (authenticated, ACTIVE; PROPOSED — Member 1)
+Request: `{ "currentPassword": "...", "newPassword": "..." }`.
+- `newPassword` must be 8–72 UTF-8 bytes and contain at least one letter and one number; it must differ from `currentPassword`.
+- The current password is verified with bcrypt. A mismatch returns `400 INVALID_CURRENT_PASSWORD` with a generic message.
+- Response `200`: `{ "changed": true }` in the standard `data` envelope. Responses never contain password hashes.
+- The route is rate limited like login/signup. Errors: 400 `VALIDATION_ERROR` or `INVALID_CURRENT_PASSWORD`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_*`, 429 `RATE_LIMITED`.
+- Password-change audit persistence is blocked by migration `006_create_audit_logs.sql`: its event-type CHECK excludes `PASSWORD_CHANGED`. Do not write this event until an approved migration permits it.
+
 #### GET /api/v1/auth/me (authenticated, ACTIVE)
 Response `200`: `{ "user": { "id", "fullName", "email", "role", "status", "createdAt" } }`
 Errors: 401 `UNAUTHENTICATED`, 403 `ACCOUNT_*`.
@@ -182,6 +190,13 @@ Request: `{ "role": "TRAINER" }`
 - Only `TRAINEE` or `TRAINER`, and only while the user is `PENDING`. Otherwise 409 `ROLE_CHANGE_NOT_ALLOWED`. `ADMIN` can never be assigned through the API.
 - Writes `USER_ROLE_CHANGED` with `{ previousRole, newRole }` in the same transaction.
 - Response `200`: same user object. Errors: 400, 401, 403, 404, 409.
+
+#### POST /api/v1/admin/users/:userId/reset-password (ADMIN; PROPOSED — Member 1)
+- The target must exist and have status `ACTIVE`. An admin cannot reset their own password or another ADMIN password (403 `FORBIDDEN`); a non-ACTIVE target returns 409 `PASSWORD_RESET_NOT_ALLOWED`; an unknown target returns 404 `USER_NOT_FOUND`.
+- The server generates a random 12-character temporary password containing at least one letter and one number, hashes it with bcrypt at the configured cost, and updates `password_hash` and `updated_at` in one transaction.
+- Response `200` with `Cache-Control: no-store`: `{ "temporaryPassword": "...", "user": { ...same fields as the admin list item } }` in the standard `data` envelope. The temporary password is returned once and is never logged or stored by the client.
+- Errors: 401 `UNAUTHENTICATED`, 403 `FORBIDDEN`, 404 `USER_NOT_FOUND`, 409 `PASSWORD_RESET_NOT_ALLOWED`.
+- The requested `PASSWORD_RESET_BY_ADMIN` audit event is omitted because migration `006_create_audit_logs.sql` rejects it through its event-type CHECK. A migration requires team approval; migrations are not changed by this proposal.
 
 ### 6.2 Profiles & Competency Mapping (Owners: Member 1 for Profiles, Member 4 for Skills & Recommendations)
 | Method & Path | Access | Contract Status |

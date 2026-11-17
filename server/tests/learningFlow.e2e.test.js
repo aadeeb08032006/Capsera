@@ -58,7 +58,8 @@ describe('End-to-End Learning Flow Test (Member 2)', () => {
       const id = String(params[0]);
       if (id === '10') return { rows: [trainerUser] };
       if (id === '20') return { rows: [traineeUser] };
-      return { rows: [] };
+      console.log('UNHANDLED SQL:', s, params);
+    return { rows: [] };
     }
 
     // 2. Insert Course
@@ -136,7 +137,8 @@ describe('End-to-End Learning Flow Test (Member 2)', () => {
         c.updated_at = new Date();
         return { rows: [c] };
       }
-      return { rows: [] };
+      console.log('UNHANDLED SQL:', s, params);
+    return { rows: [] };
     }
 
     // 8. Trainee enrollment check for course detail view
@@ -238,10 +240,39 @@ describe('End-to-End Learning Flow Test (Member 2)', () => {
       return { rows: [] };
     }
 
+    // 16b. Find course eligibility snapshot (PR #29 certificates integration)
+    if (s.includes('FROM enrollments e') && s.includes('"enrollmentId"') && s.includes('"enrollmentStatus"')) {
+      const traineeId = String(params[0]);
+      const courseId = String(params[1]);
+      const e = enrollments.find(
+        (enr) => String(enr.trainee_id) === traineeId && String(enr.course_id) === courseId,
+      );
+      if (!e) return { rows: [] };
+
+      const totalLessons = lessons.filter((l) => String(l.course_id) === courseId).length;
+      const completedLessons = lessonProgress.filter(
+        (p) => String(p.enrollment_id) === String(e.id) && String(p.course_id) === courseId,
+      ).length;
+
+      return {
+        rows: [
+          {
+            enrollmentId: String(e.id),
+            enrollmentStatus: e.status,
+            completedAt: e.completed_at || null,
+            totalLessons,
+            completedLessons,
+            requiredAssessmentCount: 0,
+            passedRequiredAssessmentCount: 0,
+          },
+        ],
+      };
+    }
+
     // 17. Update enrollment status to COMPLETED
     if (s.startsWith('UPDATE enrollments')) {
-      const enrollmentId = String(params[1]);
-      const newStatus = params[0];
+      const enrollmentId = String(params[1] !== undefined ? params[1] : params[0]);
+      const newStatus = params[1] !== undefined ? params[0] : 'COMPLETED';
       const e = enrollments.find((enr) => String(enr.id) === enrollmentId);
       if (e) {
         e.status = newStatus;
@@ -250,6 +281,33 @@ describe('End-to-End Learning Flow Test (Member 2)', () => {
         return { rows: [e] };
       }
       return { rows: [] };
+    }
+
+    // 17b. Certificate lookup and issuance mocks (PR #29 integration)
+    if (s.includes('FROM certificates cert')) {
+      return { rows: [] };
+    }
+
+    if (s.includes('INSERT INTO certificates')) {
+      const c = courses.find((course) => String(course.id) === String(params[1])) || {};
+      return {
+        rows: [
+          {
+            id: '999',
+            traineeId: String(params[0]),
+            courseId: String(params[1]),
+            courseTitle: c.title || 'Course Title',
+            courseSubject: c.subject || 'Subject',
+            certificateCode: String(params[2]),
+            issuedAt: new Date(),
+            revokedAt: null,
+          },
+        ],
+      };
+    }
+
+    if (s.startsWith('INSERT INTO audit_logs')) {
+      return { rows: [{ id: '1' }] };
     }
 
     // 18. GET /api/v1/enrollments/me
@@ -279,6 +337,7 @@ describe('End-to-End Learning Flow Test (Member 2)', () => {
       return { rows };
     }
 
+    console.log('UNHANDLED SQL:', s, params);
     return { rows: [] };
   };
 

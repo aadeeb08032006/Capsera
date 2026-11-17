@@ -141,6 +141,34 @@ export async function insertCertificate(client, { traineeId, courseId, certifica
 }
 
 /**
+ * Record a durable CERTIFICATE_ISSUED audit event inside the active certificate
+ * issuance transaction (PRD Section 8.1 / OPEN-009).
+ */
+export async function insertCertificateIssuedAuditLog(
+  client,
+  { certificateId, traineeId, courseId, certificateCode },
+) {
+  if (!client) {
+    throw new Error('Transaction client is required for certificate audit logging');
+  }
+
+  const details = {
+    traineeId: String(traineeId),
+    courseId: String(courseId),
+    certificateCode,
+  };
+
+  const result = await client.query(
+    `INSERT INTO audit_logs (actor_user_id, event_type, target_entity, target_id, details)
+     VALUES (NULL, 'CERTIFICATE_ISSUED', 'certificates', $1, $2)
+     RETURNING id`,
+    [String(certificateId), JSON.stringify(details)],
+  );
+
+  return result?.rows?.[0] ?? null;
+}
+
+/**
  * List certificates owned by a trainee with pagination (read-only).
  */
 export async function findCertificatesByTraineeId({

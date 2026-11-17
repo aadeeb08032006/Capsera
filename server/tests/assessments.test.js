@@ -1481,11 +1481,11 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
       expect(res.body.data.answers[1].correctOption).toBe('C');
     });
 
-    it('triggers course completion when a passing score completes all course requirements', async () => {
+    it('triggers course completion, issues a certificate, and records a CERTIFICATE_ISSUED audit event when a passing score completes all course requirements', async () => {
       mockAuthUser({ id: '20', role: 'TRAINEE' });
 
+      const mockClient = { query: vi.fn() };
       withTransaction.mockImplementationOnce(async (callback) => {
-        const mockClient = { query: vi.fn() };
         // 1. Lock attempt row
         mockClient.query.mockResolvedValueOnce({
           rows: [
@@ -1527,29 +1527,46 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
             }),
           ],
         });
-        // 5. checkAndTriggerCourseCompletion: find active enrollment
+        // 5. findCourseEligibilitySnapshot via issueCertificateIfEligible
         mockClient.query.mockResolvedValueOnce({
-          rows: [{ id: '900', status: 'ACTIVE' }],
+          rows: [
+            {
+              enrollmentId: '900',
+              enrollmentStatus: 'ACTIVE',
+              completedAt: null,
+              totalLessons: 2,
+              completedLessons: 2,
+              requiredAssessmentCount: 1,
+              passedRequiredAssessmentCount: 1,
+            },
+          ],
         });
-        // 6. count lessons
+        // 6. markEnrollmentCompleted
         mockClient.query.mockResolvedValueOnce({
-          rows: [{ total: 2 }],
+          rows: [{ id: '900', status: 'COMPLETED', completedAt: new Date() }],
         });
-        // 7. count completed lessons
+        // 7. findCertificateByTraineeAndCourse
         mockClient.query.mockResolvedValueOnce({
-          rows: [{ completed: 2 }],
+          rows: [],
         });
-        // 8. fetch required assessments
+        // 8. insertCertificate
         mockClient.query.mockResolvedValueOnce({
-          rows: [{ id: '1' }],
+          rows: [
+            {
+              id: '701',
+              traineeId: '20',
+              courseId: '100',
+              courseTitle: 'Atmospheric Data Modeling',
+              courseSubject: 'Meteorology',
+              certificateCode: 'CAP-1111-2222-3333',
+              issuedAt: new Date(),
+              revokedAt: null,
+            },
+          ],
         });
-        // 9. count passed required assessments
+        // 9. insertCertificateIssuedAuditLog
         mockClient.query.mockResolvedValueOnce({
-          rows: [{ passed_count: 1 }],
-        });
-        // 10. update enrollment to COMPLETED
-        mockClient.query.mockResolvedValueOnce({
-          rowCount: 1,
+          rows: [{ id: '801' }],
         });
 
         return callback(mockClient);
@@ -1564,6 +1581,170 @@ describe('Assessments API (/api/v1/courses/:courseId/assessments & /api/v1/asses
 
       expect(res.status).toBe(200);
       expect(res.body.data.attempt.isPassed).toBe(true);
+      expect(withTransaction).toHaveBeenCalledTimes(1);
+      expect(mockClient.query).toHaveBeenCalledTimes(9);
+      expect(mockClient.query.mock.calls[5][0]).toContain("SET status = 'COMPLETED'");
+      expect(mockClient.query.mock.calls[7][0]).toContain('INSERT INTO certificates');
+      expect(mockClient.query.mock.calls[8][0]).toContain('INSERT INTO audit_logs');
+    });
+
+    it('does not mark a zero-lesson course COMPLETED or issue a certificate when an assessment is passed', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      const mockClient = { query: vi.fn() };
+      withTransaction.mockImplementationOnce(async (callback) => {
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              assessment_id: '1',
+              trainee_id: '20',
+              course_id: '100',
+              status: 'IN_PROGRESS',
+              pass_percentage: '60.00',
+              started_at: new Date(),
+              duration_minutes: 30,
+            }),
+          ],
+        });
+        mockClient.query.mockResolvedValueOnce({
+          rows: [makeQuestionRow({ id: '101', correct_option: 'A', points: 10 })],
+        });
+        mockClient.query.mockResolvedValueOnce({
+          rows: [{ id: '1001', attempt_id: '501', assessment_id: '1', question_id: '101', selected_option: 'A', is_correct: true, points_awarded: 10 }],
+        });
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            makeAttemptRow({
+              id: '501',
+              trainee_id: '20',
+              status: 'GRADED',
+              earned_points: 10,
+              total_points: 10,
+              score_percentage: 100,
+              is_passed: true,
+              submitted_at: new Date(),
+              graded_at: new Date(),
+            }),
+          ],
+        });
+        // Eligibility snapshot shows 0 lessons -> NO_LESSONS (ineligible)
+        mockClient.query.mockResolvedValueOnce({
+          rows: [
+            {
+              enrollmentId: '900',
+              enrollmentStatus: 'ACTIVE',
+              completedAt: null,
+              totalLessons: 0,
+              completedLessons: 0,
+              requiredAssessmentCount: 1,
+              passedRequiredAssessmentCount: 1,
+            },
+          ],
+        });
+
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          answers: [{ questionId: '101', selectedOption: 'A' }],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.attempt.isPassed).toBe(true);
+      // Only 5 queries executed: no enrollment COMPLETED update, no certificate insert, no audit log
+      expect(mockClient.query).toHaveBeenCalledTimes(5);
+    });
+
+    it('propagates 500 and aborts attempt submission transaction if certificate audit logging fails', async () => {
+      mockAuthUser({ id: '20', role: 'TRAINEE' });
+
+      const mockClient = { query: vi.fn() };
+      withTransaction.mockImplementationOnce(async (callback) => {
+        mockClient.query
+          .mockResolvedValueOnce({
+            rows: [
+              makeAttemptRow({
+                id: '501',
+                assessment_id: '1',
+                trainee_id: '20',
+                course_id: '100',
+                status: 'IN_PROGRESS',
+                pass_percentage: '60.00',
+                started_at: new Date(),
+                duration_minutes: 30,
+              }),
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [makeQuestionRow({ id: '101', correct_option: 'A', points: 10 })],
+          })
+          .mockResolvedValueOnce({
+            rows: [{ id: '1001', attempt_id: '501', assessment_id: '1', question_id: '101', selected_option: 'A', is_correct: true, points_awarded: 10 }],
+          })
+          .mockResolvedValueOnce({
+            rows: [
+              makeAttemptRow({
+                id: '501',
+                trainee_id: '20',
+                status: 'GRADED',
+                earned_points: 10,
+                total_points: 10,
+                score_percentage: 100,
+                is_passed: true,
+                submitted_at: new Date(),
+                graded_at: new Date(),
+              }),
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                enrollmentId: '900',
+                enrollmentStatus: 'ACTIVE',
+                completedAt: null,
+                totalLessons: 2,
+                completedLessons: 2,
+                requiredAssessmentCount: 1,
+                passedRequiredAssessmentCount: 1,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            rows: [{ id: '900', status: 'COMPLETED', completedAt: new Date() }],
+          })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: '702',
+                traineeId: '20',
+                courseId: '100',
+                courseTitle: 'Atmospheric Data Modeling',
+                courseSubject: 'Meteorology',
+                certificateCode: 'CAP-4444-5555-6666',
+                issuedAt: new Date(),
+                revokedAt: null,
+              },
+            ],
+          })
+          .mockRejectedValueOnce(new Error('Simulated audit_logs failure'));
+
+        return callback(mockClient);
+      });
+
+      const res = await request(app)
+        .post('/api/v1/attempts/501/submit')
+        .set('Authorization', `Bearer ${makeToken('20')}`)
+        .send({
+          answers: [{ questionId: '101', selectedOption: 'A' }],
+        });
+
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_SERVER_ERROR');
     });
 
     it('rejects duplicate submission on already GRADED attempt (409 ATTEMPT_ALREADY_SUBMITTED)', async () => {

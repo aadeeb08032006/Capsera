@@ -8,6 +8,7 @@ import {
   findCertificatesByTraineeId,
   findCourseEligibilitySnapshot,
   insertCertificate,
+  insertCertificateIssuedAuditLog,
   markEnrollmentCompleted,
 } from './certificates.repository.js';
 
@@ -167,6 +168,13 @@ async function issueInsideTransaction(txClient, traineeId, courseId) {
       });
 
       if (created) {
+        await insertCertificateIssuedAuditLog(txClient, {
+          certificateId: created.id,
+          traineeId: normalizedTraineeId,
+          courseId: normalizedCourseId,
+          certificateCode: created.certificateCode,
+        });
+
         return {
           issued: true,
           reason: 'ISSUED',
