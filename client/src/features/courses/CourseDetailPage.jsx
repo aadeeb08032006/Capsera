@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getCourseById, enrollInCourse, getMyEnrollments } from './coursesApi.js';
+import { listAssessmentsByCourse } from '../assessments/assessmentsApi.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 
 export default function CourseDetailPage() {
   const { courseId } = useParams();
   const navigate = useNavigate();
-  const { user, isAuthenticated, isTrainee, isTrainer, isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAuthenticated = Boolean(user);
+  const isTrainee = user?.role === 'TRAINEE';
+  const isTrainer = user?.role === 'TRAINER';
+  const isAdmin = user?.role === 'ADMIN';
 
   const [course, setCourse] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [assessmentsLoading, setAssessmentsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState(null);
@@ -48,6 +55,32 @@ export default function CourseDetailPage() {
     loadCourseData();
   }, [loadCourseData]);
 
+  const loadAssessments = useCallback(async () => {
+    if (!courseId || !isAuthenticated) {
+      setAssessments([]);
+      return;
+    }
+    // Trainees only have access if enrolled; trainers/admins have course-level access
+    if (isTrainee && !enrollment) {
+      setAssessments([]);
+      return;
+    }
+    setAssessmentsLoading(true);
+    try {
+      const data = await listAssessmentsByCourse(courseId);
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      setAssessments(items);
+    } catch {
+      setAssessments([]);
+    } finally {
+      setAssessmentsLoading(false);
+    }
+  }, [courseId, isAuthenticated, isTrainee, enrollment]);
+
+  useEffect(() => {
+    loadAssessments();
+  }, [loadAssessments]);
+
   const handleEnroll = async () => {
     if (!isAuthenticated) {
       navigate('/courses');
@@ -62,6 +95,12 @@ export default function CourseDetailPage() {
       // Reload course to fetch ordered lessons now that trainee is enrolled
       const updatedCourse = await getCourseById(courseId);
       setCourse(updatedCourse);
+      try {
+        const data = await listAssessmentsByCourse(courseId);
+        setAssessments(Array.isArray(data) ? data : (data?.items || []));
+      } catch {
+        // ignore
+      }
     } catch (err) {
       if (err.code === 'DUPLICATE_ENROLLMENT' || err.status === 409) {
         setEnrollSuccess(true);
@@ -232,6 +271,101 @@ export default function CourseDetailPage() {
               </div>
             )}
           </section>
+
+          {/* Assessments & Quizzes Section (Member 3) */}
+          <section className="courses-section" aria-labelledby="assessments-heading">
+            <div className="courses-section-header">
+              <h2 id="assessments-heading">Assessments & Quizzes</h2>
+              <span className="courses-section-count">
+                {assessments.length} {assessments.length === 1 ? 'assessment' : 'assessments'}
+              </span>
+            </div>
+
+            {assessmentsLoading ? (
+              <p className="courses-loading-text">Loading assessments...</p>
+            ) : assessments.length > 0 ? (
+              <ul className="courses-lessons-list" aria-label="Course assessments">
+                {assessments.map((assessment, idx) => (
+                  <li key={assessment.id} className="courses-lesson-item">
+                    <span className="courses-lesson-number" aria-hidden="true">
+                      Q{idx + 1}
+                    </span>
+                    <div className="courses-lesson-info">
+                      <h3 className="courses-lesson-title">
+                        {assessment.title}
+                        {assessment.isRequired && (
+                          <span
+                            style={{
+                              marginLeft: '8px',
+                              fontSize: '0.75rem',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Required for Certificate
+                          </span>
+                        )}
+                      </h3>
+                      <span className="courses-lesson-duration">
+                        Passing score: {assessment.passingScore}%
+                        {assessment.timeLimitMinutes
+                          ? ` • ⏱ ${assessment.timeLimitMinutes} mins`
+                          : ' • No time limit'}
+                      </span>
+                    </div>
+
+                    {isTrainee && enrollment ? (
+                      <Link
+                        to={`/courses/${course.id}/assessments/${assessment.id}/player`}
+                        className="courses-btn courses-btn-primary courses-btn-sm"
+                        aria-label={`Take quiz: ${assessment.title}`}
+                      >
+                        Take Quiz →
+                      </Link>
+                    ) : isOwnerOrAdmin ? (
+                      <Link
+                        to={`/courses/${course.id}/assessments/manage`}
+                        className="courses-btn courses-btn-secondary courses-btn-sm"
+                      >
+                        Edit in Builder
+                      </Link>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="courses-curriculum-locked">
+                <p>
+                  {isTrainee && !enrollment
+                    ? '🔒 Enroll in this course to access assessments and quizzes.'
+                    : 'No published assessments for this course yet.'}
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Course Feedback & Reviews Section (Member 3) */}
+          <section className="courses-section" aria-labelledby="feedback-heading">
+            <div className="courses-section-header">
+              <h2 id="feedback-heading">Course Feedback & Reviews</h2>
+            </div>
+            <div className="courses-prose">
+              <p>
+                Share your learning experience or check reviews from fellow trainees.
+              </p>
+              <div style={{ marginTop: '12px' }}>
+                <Link
+                  to={`/courses/${course.id}/feedback`}
+                  className="courses-btn courses-btn-secondary courses-btn-sm"
+                >
+                  {enrollment ? 'Leave or View Feedback →' : 'View Course Reviews →'}
+                </Link>
+              </div>
+            </div>
+          </section>
         </div>
 
         {/* Sidebar / Enrollment Action Card */}
@@ -281,6 +415,13 @@ export default function CourseDetailPage() {
                         View in My Learning
                       </Link>
                     )}
+                    <Link
+                      to={`/courses/${course.id}/feedback`}
+                      className="courses-btn courses-btn-secondary courses-btn-block"
+                      style={{ marginTop: '8px' }}
+                    >
+                      Rate & Review Course
+                    </Link>
                   </div>
                 ) : (
                   <button
@@ -307,6 +448,18 @@ export default function CourseDetailPage() {
                     className="courses-btn courses-btn-primary courses-btn-block"
                   >
                     Manage Lessons
+                  </Link>
+                  <Link
+                    to={`/courses/${course.id}/assessments/manage`}
+                    className="courses-btn courses-btn-secondary courses-btn-block"
+                  >
+                    Manage Assessments
+                  </Link>
+                  <Link
+                    to={`/courses/${course.id}/assessments/results`}
+                    className="courses-btn courses-btn-secondary courses-btn-block"
+                  >
+                    Assessment Results
                   </Link>
                 </div>
               ) : !isAuthenticated ? (
