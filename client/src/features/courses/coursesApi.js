@@ -1,4 +1,4 @@
-import { apiRequest } from '../../services/apiClient.js';
+import { apiRequest, API_BASE_URL, TOKEN_STORAGE_KEY } from '../../services/apiClient.js';
 
 /**
  * Courses API Service
@@ -162,12 +162,9 @@ export async function deleteResource(courseId, resourceId, options = {}) {
 }
 
 export async function downloadResourceFile(courseId, resourceId, fallbackFilename = 'resource-file') {
-  const token =
-    (typeof localStorage !== 'undefined' && localStorage.getItem('token')) ||
-    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('token')) ||
-    null;
+  const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_STORAGE_KEY) : null;
 
-  const url = `/api/v1/courses/${courseId}/resources/${resourceId}/download`;
+  const url = `${API_BASE_URL}/courses/${courseId}/resources/${resourceId}/download`;
   const response = await fetch(url, {
     credentials: 'include',
     headers: {
