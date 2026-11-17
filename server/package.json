@@ -12,7 +12,8 @@
     "seed:admin": "node scripts/seed-admin.js",
     "seed:demo": "node scripts/seed-demo.js",
     "test": "vitest run",
-    "test:integration": "RUN_PG_INTEGRATION=true DB_NAME=capsera_cp03_test vitest run tests/skills.integration.test.js"
+    "test:integration": "RUN_PG_INTEGRATION=true DB_NAME=capsera_cp03_test vitest run tests/skills.integration.test.js",
+    "test:member4:integration": "RUN_PG_INTEGRATION=true DB_NAME=capsera_cp03_test vitest run --no-file-parallelism tests/dashboard.integration.test.js tests/certificates.integration.test.js tests/skills.integration.test.js tests/recommendations.integration.test.js tests/announcements.integration.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

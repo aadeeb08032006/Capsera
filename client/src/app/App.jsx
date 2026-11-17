@@ -285,7 +285,7 @@ export default function App() {
           path="/trainers/recommendations"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <TrainerRecommendationsPage />
+              <TrainerRecommendationsPage coursesPath="/courses" />
             </ProtectedRoute>
           }
         />
