@@ -8,6 +8,7 @@ import {
   listResources,
   downloadResourceFile,
 } from './coursesApi.js';
+import { listAssessmentsByCourse } from '../assessments/assessmentsApi.js';
 
 export default function LessonViewerPage() {
   const { courseId, lessonId } = useParams();
@@ -17,6 +18,7 @@ export default function LessonViewerPage() {
   const [course, setCourse] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [resources, setResources] = useState([]);
+  const [assessments, setAssessments] = useState([]);
   const [downloadingId, setDownloadingId] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
@@ -26,13 +28,13 @@ export default function LessonViewerPage() {
   const [marking, setMarking] = useState(false);
   const [markSuccess, setMarkSuccess] = useState(false);
   const [markError, setMarkError] = useState(null);
-  const [completionBanner, setCompletionBanner] = useState(false);
+  const [bannerType, setBannerType] = useState(null); // 'COURSE_COMPLETED' | 'ASSESSMENTS_PENDING' | null
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isTrainee = user?.role === 'TRAINEE';
   const isTrainerOrAdmin = user?.role === 'TRAINER' || user?.role === 'ADMIN';
 
-  // Fetch course, lessons, and enrollment details
+  // Fetch course, lessons, enrollment details, and assessments
   const loadViewerData = async () => {
     try {
       setLoading(true);
@@ -53,6 +55,14 @@ export default function LessonViewerPage() {
             (e) => String(e.courseId) === String(courseId),
           );
           setEnrollment(currentEnrollment || null);
+
+          if (currentEnrollment) {
+            if (currentEnrollment.status === 'COMPLETED') {
+              setBannerType('COURSE_COMPLETED');
+            } else if (currentEnrollment.progressPercentage === 100) {
+              setBannerType('ASSESSMENTS_PENDING');
+            }
+          }
         } catch {
           // Non-blocking: enrollment might not exist yet if previewing
         }
@@ -64,6 +74,15 @@ export default function LessonViewerPage() {
         setResources(resourceList || []);
       } catch {
         // Resources fetch is optional
+      }
+
+      // Fetch course assessments for navigation and requirement checks (Member 3)
+      try {
+        const assessmentData = await listAssessmentsByCourse(courseId);
+        const items = Array.isArray(assessmentData) ? assessmentData : (assessmentData?.items || []);
+        setAssessments(items);
+      } catch {
+        setAssessments([]);
       }
     } catch (err) {
       setError(err.message || 'Failed to load lesson. Please try again.');
@@ -107,9 +126,12 @@ export default function LessonViewerPage() {
       setCompletedLessonIds((prev) => new Set(prev).add(String(currentLesson.id)));
       setMarkSuccess(true);
 
-      // Check if course completed
-      if (res?.isComplete || res?.progressPercentage === 100) {
-        setCompletionBanner(true);
+      // Only show course completion celebration if course is genuinely complete (all lessons + required assessments passed)
+      if (res?.isComplete || res?.status === 'COMPLETED') {
+        setBannerType('COURSE_COMPLETED');
+      } else if (res?.progressPercentage === 100) {
+        // Lessons are 100% complete, but course requires passing assessments before completion
+        setBannerType('ASSESSMENTS_PENDING');
       }
     } catch (err) {
       setMarkError(err.message || 'Unable to update lesson progress.');
@@ -303,21 +325,157 @@ export default function LessonViewerPage() {
             })}
           </ol>
         </nav>
+
+        {/* Course Assessments Navigation (Member 3 Coordination) */}
+        {assessments.length > 0 && (
+          <div
+            className="sidebar-assessments-section"
+            style={{
+              marginTop: '1.25rem',
+              borderTop: '1px solid #e2e8f0',
+              paddingTop: '1rem',
+              paddingLeft: '0.75rem',
+              paddingRight: '0.75rem',
+            }}
+          >
+            <h4
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: '#64748b',
+                marginBottom: '0.5rem',
+              }}
+            >
+              Assessments & Quizzes ({assessments.length})
+            </h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {assessments.map((assessment, idx) => (
+                <li key={assessment.id}>
+                  <Link
+                    to={
+                      isTrainee && enrollment
+                        ? `/courses/${courseId}/assessments/${assessment.id}/player`
+                        : `/courses/${courseId}/assessments/manage`
+                    }
+                    className="sidebar-lesson-btn"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      textDecoration: 'none',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.8125rem',
+                      color: '#1e293b',
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                      <span className="lesson-badge-num" style={{ minWidth: '24px' }}>Q{idx + 1}</span>
+                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {assessment.title}
+                      </span>
+                    </span>
+                    {assessment.isRequired && (
+                      <span
+                        style={{
+                          fontSize: '0.625rem',
+                          background: '#fef3c7',
+                          color: '#92400e',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        Required
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Course Feedback Link (Member 3 Coordination) */}
+        <div
+          className="sidebar-feedback-section"
+          style={{
+            marginTop: '1rem',
+            borderTop: '1px solid #e2e8f0',
+            paddingTop: '0.75rem',
+            paddingLeft: '0.75rem',
+            paddingRight: '0.75rem',
+          }}
+        >
+          <Link
+            to={`/courses/${courseId}/feedback`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.8125rem',
+              color: '#0284c7',
+              textDecoration: 'none',
+              fontWeight: 500,
+            }}
+          >
+            ★ Course Reviews & Feedback →
+          </Link>
+        </div>
       </aside>
 
       {/* Main Lesson Stage */}
       <main className="viewer-main-content" tabIndex="-1">
-        {/* Course Completion Celebration Banner */}
-        {completionBanner && (
+        {/* Full Course Completion Celebration Banner */}
+        {bannerType === 'COURSE_COMPLETED' && (
           <div className="completion-banner" role="status" aria-live="polite">
             <div className="banner-icon" aria-hidden="true">🎉</div>
             <div className="banner-text">
-              <h3>Congratulations!</h3>
-              <p>You have completed all lessons for <strong>{course?.title}</strong>!</p>
+              <h3>Congratulations! Course Completed!</h3>
+              <p>You have completed all lessons and satisfied all requirements for <strong>{course?.title}</strong>!</p>
             </div>
-            <Link to="/my-learning" className="btn btn-sm btn-primary">
-              View My Learning
-            </Link>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Link to="/my-learning" className="btn btn-sm btn-primary">
+                View My Learning
+              </Link>
+              <Link to="/certificates" className="btn btn-sm btn-secondary">
+                View Certificate
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Lessons Completed but Required Assessments Pending Banner */}
+        {bannerType === 'ASSESSMENTS_PENDING' && (
+          <div
+            className="completion-banner"
+            role="status"
+            aria-live="polite"
+            style={{
+              background: '#fef3c7',
+              borderColor: '#f59e0b',
+              color: '#92400e',
+            }}
+          >
+            <div className="banner-icon" aria-hidden="true">📝</div>
+            <div className="banner-text">
+              <h3 style={{ color: '#92400e' }}>All Lessons Completed!</h3>
+              <p style={{ color: '#78350f' }}>
+                Great work! To complete this course and earn your certificate, please complete the required course assessment(s).
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Link
+                to={`/courses/${courseId}`}
+                className="btn btn-sm btn-primary"
+                style={{ background: '#b45309', borderColor: '#b45309', color: '#ffffff' }}
+              >
+                Go to Assessments →
+              </Link>
+            </div>
           </div>
         )}
 
