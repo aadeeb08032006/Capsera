@@ -285,7 +285,7 @@ export default function App() {
           path="/trainers/recommendations"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <TrainerRecommendationsPage />
+              <TrainerRecommendationsPage coursesPath="/courses" />
             </ProtectedRoute>
           }
         />
@@ -353,14 +353,70 @@ export default function App() {
         />
 
         {/* Member 3: Assessments & Evaluations Routes */}
-        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
-        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
-        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
-        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
-        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
-        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
-        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
-        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
+        <Route
+          path="/courses/:courseId/assessments/manage"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerAssessmentBuilder />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assessments/results"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerCourseResultsView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assessments/manage"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerAssessmentBuilder />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assessments/results"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerCourseResultsView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assessments/:assessmentId/player"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <QuizPlayer />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assessments/:assessmentId/player"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <QuizPlayer />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/feedback"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <CourseFeedbackForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/feedback/:courseId"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <CourseFeedbackForm />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Protected root */}
         <Route
