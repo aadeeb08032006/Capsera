@@ -44,11 +44,11 @@
 | 4 | `Skill` | `skills` | `002_create_skills_and_competency.sql` | Member 4 | Proposed per Member 4 Spec (Pending Team Review) |
 | 5 | `TraineeSkill` | `trainee_skills` | `002_create_skills_and_competency.sql` | Member 4 | Proposed per Member 4 Spec (Pending Team Review) |
 | 6 | `TrainerSkill` | `trainer_skills` | `002_create_skills_and_competency.sql` | Member 4 | Proposed per Member 4 Spec (Pending Team Review) |
-| 7 | `Course` | `courses` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Proposed (Pending Member 2 & Team Review) |
-| 8 | `Lesson` | `lessons` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Proposed (Pending Member 2 & Team Review) |
-| 9 | `LearningResource` | `learning_resources` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Proposed (Pending Member 2 & Team Review) |
-| 10 | `Enrollment` | `enrollments` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Proposed (Pending Member 2 & Team Review) |
-| 11 | `LessonProgress` | `lesson_progress` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Proposed (Pending Member 2 & Team Review) |
+| 7 | `Course` | `courses` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Implemented & Verified (Migration 003) |
+| 8 | `Lesson` | `lessons` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Implemented & Verified (Migration 003) |
+| 9 | `LearningResource` | `learning_resources` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Implemented & Verified (Migration 003) |
+| 10 | `Enrollment` | `enrollments` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Implemented & Verified (Migration 003) |
+| 11 | `LessonProgress` | `lesson_progress` | `003_create_courses_lessons_and_enrollments.sql` | Member 2 | Implemented & Verified (Migration 003) |
 | 12 | `Assessment` | `assessments` | `004_create_assessments_attempts_and_feedback.sql` | Member 3 | Proposed (Pending Member 3 & Team Review) |
 | 13 | `Question` | `questions` | `004_create_assessments_attempts_and_feedback.sql` | Member 3 | Proposed (Pending Member 3 & Team Review) |
 | 14 | `AssessmentAttempt` | `assessment_attempts` | `004_create_assessments_attempts_and_feedback.sql` | Member 3 | Proposed (Pending Member 3 & Team Review) |
@@ -377,97 +377,140 @@ erDiagram
 
 ### 4.2 Member 2 Tables — Courses, Lessons, Learning Resources, Enrollments & Progress (`003_create_courses_lessons_and_enrollments.sql`)
 
+- **Primary Module Owner:** Member 2 (Courses & Learning Resources)
+- **Status:** Implemented & Verified in `database/migrations/003_create_courses_lessons_and_enrollments.sql`
+- **Tables Defined (5 tables):** `courses`, `lessons`, `learning_resources`, `enrollments`, `lesson_progress`
+
 #### Table 4: `courses` (Entity: `Course`, Owner: Member 2)
-| Column | PostgreSQL Type | Nullable / Default | Constraints & Notes | Source |
+| Column | PostgreSQL Type | Nullable / Default | Constraints & Relational Rules | Source / PRD |
 |---|---|---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `NOT NULL` | `PRIMARY KEY` | PRD 11.1 |
 | `trainer_id` | `BIGINT` | `NOT NULL` | `FK -> users(id) ON DELETE RESTRICT` | PRD 6.2, 12 |
 | `title` | `VARCHAR(200)` | `NOT NULL` | `CHECK (LENGTH(BTRIM(title)) > 0)` | PRD 6.2 |
-| `summary` | `VARCHAR(500)` | `NULL` | Short catalogue card summary | Proposed (`SCHEMA-M2-01`) |
-| `description` | `TEXT` | `NULL` | Required non-empty when `status = 'PUBLISHED'` | PRD 6.2 |
-| `subject` | `VARCHAR(120)` | `NULL` | Required non-empty when `status = 'PUBLISHED'` | PRD 6.2 |
-| `level` | `VARCHAR(30)` | `NULL` | `CHECK (level IN ('BEGINNER','INTERMEDIATE','ADVANCED'))`; required when `PUBLISHED` | PRD 6.2 (`SCHEMA-M2-01` enum values) |
-| `thumbnail_url` | `VARCHAR(2048)` | `NULL` | Optional thumbnail URL/storage reference | PRD 6.2 |
+| `summary` | `VARCHAR(500)` | `NULL` | Concise card overview displayed in catalogue | `SCHEMA-M2-01` |
+| `description` | `TEXT` | `NULL` | Full syllabus & objectives; required when `status = 'PUBLISHED'` | PRD 6.2 |
+| `subject` | `VARCHAR(120)` | `NULL` | Subject category (e.g. Public Administration, Data); required when `PUBLISHED` | PRD 6.2 |
+| `level` | `VARCHAR(30)` | `NULL` | `CHECK (level IN ('BEGINNER', 'INTERMEDIATE', 'ADVANCED'))`; required when `PUBLISHED` | PRD 6.2 |
+| `thumbnail_url` | `VARCHAR(2048)` | `NULL` | HTTP/HTTPS URL reference to banner image (no binary stored) | PRD 6.2, 8.4 |
 | `status` | `VARCHAR(20)` | `NOT NULL DEFAULT 'DRAFT'` | `CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))` | PRD 6.2, 10.3 |
-| `published_at` | `TIMESTAMPTZ` | `NULL` | Required non-null when `status = 'PUBLISHED'` | Proposed (`SCHEMA-M2-01`) |
-| `archived_at` | `TIMESTAMPTZ` | `NULL` | Required non-null iff `status = 'ARCHIVED'`; `>= published_at` when both set | Proposed (`SCHEMA-M2-01`) |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
-| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
+| `published_at` | `TIMESTAMPTZ` | `NULL` | Set automatically on publication; required non-null when `status = 'PUBLISHED'` | `SCHEMA-M2-01` |
+| `archived_at` | `TIMESTAMPTZ` | `NULL` | Required non-null iff `status = 'ARCHIVED'`; `>= published_at` when both present | `SCHEMA-M2-01` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit creation timestamp | PRD 8.3 |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit update timestamp | PRD 8.3 |
 
-- **Table Checks:**
-  - `chk_courses_published_fields` guarantees a course cannot enter `'PUBLISHED'` status unless `description`, `subject`, and `level` are populated.
-  - `chk_courses_lifecycle_timestamps` enforces `(status <> 'PUBLISHED' OR (published_at IS NOT NULL AND archived_at IS NULL))`, `(status = 'ARCHIVED') <=> (archived_at IS NOT NULL)`, and `archived_at >= published_at` when both timestamps are set.
-- **Indexes:** `idx_courses_trainer_id (trainer_id)`, `idx_courses_status_subject (status, subject)` (PRD 8.4), `idx_courses_status_level (status, level)`.
+- **Table Checks & Integrity Guarantees:**
+  - `chk_courses_title_non_empty`: Guarantees course title contains at least one non-whitespace character.
+  - `chk_courses_published_fields`: Prevents any course from entering `'PUBLISHED'` status unless `description`, `subject`, and `level` are populated.
+  - `chk_courses_lifecycle_timestamps`: Enforces lifecycle chronological integrity:
+    1. `(status <> 'PUBLISHED' OR (published_at IS NOT NULL AND archived_at IS NULL))`
+    2. `(status = 'ARCHIVED') <=> (archived_at IS NOT NULL)`
+    3. `archived_at >= published_at` whenever both timestamps are present.
+- **Indexes:**
+  - `idx_courses_trainer_id ON courses (trainer_id)` (fast trainer-specific query filtering)
+  - `idx_courses_status_subject ON courses (status, subject)` (composite index for public catalogue filtering)
+  - `idx_courses_status_level ON courses (status, level)` (composite index for level filtering)
+
+---
 
 #### Table 5: `lessons` (Entity: `Lesson`, Owner: Member 2)
-| Column | PostgreSQL Type | Nullable / Default | Constraints & Notes | Source |
+| Column | PostgreSQL Type | Nullable / Default | Constraints & Relational Rules | Source / PRD |
 |---|---|---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `NOT NULL` | `PRIMARY KEY`, plus `UNIQUE (course_id, id)` for composite child FKs | PRD 11.1 |
 | `course_id` | `BIGINT` | `NOT NULL` | `FK -> courses(id) ON DELETE RESTRICT` | PRD 6.4, 12 |
 | `title` | `VARCHAR(200)` | `NOT NULL` | `CHECK (LENGTH(BTRIM(title)) > 0)` | PRD 6.4 |
-| `content` | `TEXT` | `NULL` | Lesson body/study notes | Proposed (`SCHEMA-M2-02`) |
-| `lesson_order` | `INTEGER` | `NOT NULL` | `CHECK (lesson_order >= 1)`, `UNIQUE (course_id, lesson_order)` (non-deferrable for `ON CONFLICT` support) | PRD 6.4 (`SCHEMA-M2-02`) |
-| `estimated_duration_minutes` | `INTEGER` | `NULL` | `CHECK (estimated_duration_minutes > 0)` | Proposed (`SCHEMA-M2-02`) |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
-| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
+| `content` | `TEXT` | `NULL` | Instructional content, reading text, or markdown syllabus notes | `SCHEMA-M2-02` |
+| `lesson_order` | `INTEGER` | `NOT NULL` | `CHECK (lesson_order >= 1)`, `UNIQUE (course_id, lesson_order)` | PRD 6.4 |
+| `estimated_duration_minutes` | `INTEGER` | `NULL` | `CHECK (estimated_duration_minutes IS NULL OR estimated_duration_minutes > 0)` | `SCHEMA-M2-02` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit creation timestamp | PRD 8.3 |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit update timestamp | PRD 8.3 |
 
-- **Indexes:** `uq_lessons_course_order (course_id, lesson_order)` (kept non-deferrable by default so PostgreSQL `INSERT ... ON CONFLICT (course_id, lesson_order)` works; see `SCHEMA-M2-02` in `DECISIONS.md`), `uq_lessons_course_id_id (course_id, id)` (ordered with `course_id` first so it supports composite child FKs on `learning_resources` and `lesson_progress` without duplicating `lessons_pkey`).
+- **Table Checks & Integrity Guarantees:**
+  - `uq_lessons_course_order`: Guarantees unique, collision-free ordering per course. Kept non-deferrable to support PostgreSQL `INSERT ... ON CONFLICT (course_id, lesson_order)`.
+  - `uq_lessons_course_id_id`: Composite unique constraint on `(course_id, id)` allowing child tables (`learning_resources`, `lesson_progress`) to bind both course and lesson simultaneously.
+  - `chk_lessons_order_positive`: Ensures sequence positions are strictly positive integers (`>= 1`).
+  - `chk_lessons_duration_positive`: Ensures estimated duration is positive when provided.
+- **Indexes:**
+  - `uq_lessons_course_order (course_id, lesson_order)` (indexes leading column `course_id` and guarantees order uniqueness)
+  - `uq_lessons_course_id_id (course_id, id)` (supports composite foreign keys from `learning_resources` and `lesson_progress`)
+
+---
 
 #### Table 6: `learning_resources` (Entity: `LearningResource`, Owner: Member 2)
-| Column | PostgreSQL Type | Nullable / Default | Constraints & Notes | Source |
+| Column | PostgreSQL Type | Nullable / Default | Constraints & Relational Rules | Source / PRD |
 |---|---|---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `NOT NULL` | `PRIMARY KEY` | PRD 11.1 |
 | `course_id` | `BIGINT` | `NOT NULL` | `FK -> courses(id) ON DELETE RESTRICT` | PRD 6.4, 12 |
-| `lesson_id` | `BIGINT` | `NULL` | Composite `FK (course_id, lesson_id) -> lessons(course_id, id) ON DELETE RESTRICT` | PRD FR-06 (`SCHEMA-M2-02`) |
-| `uploaded_by` | `BIGINT` | `NOT NULL` | `FK -> users(id) ON DELETE RESTRICT` | Proposed (`SCHEMA-M2-02`) |
+| `lesson_id` | `BIGINT` | `NULL` | Composite `FK (course_id, lesson_id) -> lessons(course_id, id) ON DELETE RESTRICT` | PRD FR-06 |
+| `uploaded_by` | `BIGINT` | `NOT NULL` | `FK -> users(id) ON DELETE RESTRICT` | `SCHEMA-M2-02` |
 | `title` | `VARCHAR(200)` | `NOT NULL` | `CHECK (LENGTH(BTRIM(title)) > 0)` | PRD 6.4 |
-| `description` | `TEXT` | `NULL` | Optional resource notes | Proposed (`SCHEMA-M2-02`) |
-| `resource_type` | `VARCHAR(20)` | `NOT NULL` | `CHECK (resource_type IN ('VIDEO','PRESENTATION','DOCUMENT','LINK','OTHER'))` | PRD 10.3 |
-| `storage_ref` | `VARCHAR(2048)` | `NULL` | Object/file storage key (never raw binary) | PRD 6.4, 8.4 |
+| `description` | `TEXT` | `NULL` | Resource notes or instructions | `SCHEMA-M2-02` |
+| `resource_type` | `VARCHAR(20)` | `NOT NULL` | `CHECK (resource_type IN ('VIDEO', 'PRESENTATION', 'DOCUMENT', 'LINK', 'OTHER'))` | PRD 10.3 |
+| `storage_ref` | `VARCHAR(2048)` | `NULL` | Internal local/object storage key (raw path never leaked in public API) | PRD 6.4, 8.4 |
 | `external_url` | `VARCHAR(2048)` | `NULL` | Required when `resource_type = 'LINK'` | PRD 6.4 |
-| `original_filename` | `VARCHAR(255)` | `NULL` | Original uploaded filename metadata | Proposed (`SCHEMA-M2-02`) |
+| `original_filename` | `VARCHAR(255)` | `NULL` | Original client filename metadata for download headers | `SCHEMA-M2-02` |
 | `mime_type` | `VARCHAR(120)` | `NULL` | Server-validated MIME type | PRD 6.4, 8.1 |
-| `file_size_bytes` | `BIGINT` | `NULL` | `CHECK (file_size_bytes >= 0)` | PRD 6.4, 8.1 |
-| `resource_order` | `INTEGER` | `NOT NULL DEFAULT 1` | `CHECK (resource_order >= 1)` | Proposed (`SCHEMA-M2-02`) |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
-| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
+| `file_size_bytes` | `BIGINT` | `NULL` | `CHECK (file_size_bytes IS NULL OR file_size_bytes >= 0)` | PRD 6.4, 8.1 |
+| `resource_order` | `INTEGER` | `NOT NULL DEFAULT 1` | `CHECK (resource_order >= 1)` | `SCHEMA-M2-02` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit creation timestamp | PRD 8.3 |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit update timestamp | PRD 8.3 |
 
-- **Table Checks:** At least one of `storage_ref` or `external_url` must be non-empty; `LINK` resources must populate `external_url`. Composite FK `(course_id, lesson_id)` (`MATCH SIMPLE`, skipped when `lesson_id IS NULL`) prevents attaching a resource to a lesson belonging to a different course.
-- **Indexes:** `idx_learning_resources_course_order (course_id, resource_order)`, `idx_learning_resources_lesson_id (lesson_id)`, `idx_learning_resources_uploaded_by (uploaded_by)`.
+- **Table Checks & Integrity Guarantees:**
+  - `chk_learning_resources_location`: Guarantees at least one of `storage_ref` or `external_url` is non-empty. No empty resources can exist.
+  - `chk_learning_resources_link_url`: Requires `external_url` to be non-empty whenever `resource_type = 'LINK'`.
+  - `fk_learning_resources_lesson_course`: Composite foreign key `(course_id, lesson_id)` (`MATCH SIMPLE`) prevents associating a resource with a lesson from an unrelated course.
+- **Indexes:**
+  - `idx_learning_resources_course_order ON learning_resources (course_id, resource_order)`
+  - `idx_learning_resources_lesson_id ON learning_resources (lesson_id)`
+  - `idx_learning_resources_uploaded_by ON learning_resources (uploaded_by)`
+
+---
 
 #### Table 7: `enrollments` (Entity: `Enrollment`, Owner: Member 2)
-| Column | PostgreSQL Type | Nullable / Default | Constraints & Notes | Source |
+| Column | PostgreSQL Type | Nullable / Default | Constraints & Relational Rules | Source / PRD |
 |---|---|---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `NOT NULL` | `PRIMARY KEY`, plus `UNIQUE (course_id, id)` for composite child FK | PRD 11.1 |
 | `trainee_id` | `BIGINT` | `NOT NULL` | `FK -> users(id) ON DELETE RESTRICT`, `UNIQUE (trainee_id, course_id)` | PRD 6.3, 12 |
 | `course_id` | `BIGINT` | `NOT NULL` | `FK -> courses(id) ON DELETE RESTRICT` | PRD 6.3, 12 |
 | `status` | `VARCHAR(20)` | `NOT NULL DEFAULT 'ACTIVE'` | `CHECK (status IN ('ACTIVE', 'COMPLETED', 'CANCELLED'))` | PRD 10.3 |
-| `enrolled_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 6.3 |
-| `completed_at` | `TIMESTAMPTZ` | `NULL` | `NOT NULL` iff `status = 'COMPLETED'`; `>= enrolled_at` | Proposed (`SCHEMA-M2-03`) |
-| `cancelled_at` | `TIMESTAMPTZ` | `NULL` | `NOT NULL` iff `status = 'CANCELLED'`; `>= enrolled_at` | PRD 6.3 (`SCHEMA-M2-03`) |
-| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC | PRD 8.3 |
+| `enrolled_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC enrollment event timestamp | PRD 6.3 |
+| `completed_at` | `TIMESTAMPTZ` | `NULL` | Required non-null iff `status = 'COMPLETED'`; `>= enrolled_at` | `SCHEMA-M2-03` |
+| `cancelled_at` | `TIMESTAMPTZ` | `NULL` | Required non-null iff `status = 'CANCELLED'`; `>= enrolled_at` | PRD 6.3 |
+| `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC audit update timestamp | PRD 8.3 |
 
-- **Table Checks:**
-  - `chk_enrollments_status_timestamps` enforces exact 3-state mutual exclusivity:
-    - `status = 'ACTIVE'` requires `completed_at IS NULL AND cancelled_at IS NULL`
-    - `status = 'COMPLETED'` requires `completed_at IS NOT NULL AND cancelled_at IS NULL`
-    - `status = 'CANCELLED'` requires `cancelled_at IS NOT NULL AND completed_at IS NULL`
-  - `chk_enrollments_chronology` requires `completed_at >= enrolled_at` and `cancelled_at >= enrolled_at` whenever set.
-  - Intentionally omits any stored percentage column so progress is always derived from `lesson_progress` vs `lessons` (PRD Section 6.6).
-  - **Pending Team Policy (`OPEN-007`):** Cancellation and re-enrollment behavior under `uq_enrollments_trainee_course` is documented in Section 5.4 and `DECISIONS.md` (`OPEN-007`) for Member 2 and team approval.
-- **Indexes:** `uq_enrollments_trainee_course (trainee_id, course_id)`, `uq_enrollments_course_id_id (course_id, id)`, `idx_enrollments_course_status (course_id, status)`, `idx_enrollments_status (status)`.
+- **Table Checks & Integrity Guarantees:**
+  - `uq_enrollments_trainee_course`: Strict uniqueness ensuring a trainee can have at most one enrollment record per course.
+  - `chk_enrollments_status_timestamps`: Enforces exact 3-state mutual exclusivity:
+    1. `status = 'ACTIVE'` requires `completed_at IS NULL AND cancelled_at IS NULL`
+    2. `status = 'COMPLETED'` requires `completed_at IS NOT NULL AND cancelled_at IS NULL`
+    3. `status = 'CANCELLED'` requires `cancelled_at IS NOT NULL AND completed_at IS NULL`
+  - `chk_enrollments_chronology`: Enforces `completed_at >= enrolled_at` and `cancelled_at >= enrolled_at` whenever populated.
+  - **Dynamic Progress Guarantee:** Intentionally omits any stored percentage column so completion is strictly derived from `COUNT(lesson_progress)` vs `COUNT(lessons)`, avoiding stale or tampered progress figures.
+- **Indexes:**
+  - `uq_enrollments_trainee_course (trainee_id, course_id)` (unique trainee-course constraint and index)
+  - `uq_enrollments_course_id_id (course_id, id)` (supports composite foreign key from `lesson_progress`)
+  - `idx_enrollments_course_status ON enrollments (course_id, status)` (fast course analytics and trainee rosters)
+  - `idx_enrollments_status ON enrollments (status)` (fast administrative filtering)
+
+---
 
 #### Table 8: `lesson_progress` (Entity: `LessonProgress`, Owner: Member 2)
-| Column | PostgreSQL Type | Nullable / Default | Constraints & Notes | Source |
+| Column | PostgreSQL Type | Nullable / Default | Constraints & Relational Rules | Source / PRD |
 |---|---|---|---|---|
 | `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `NOT NULL` | `PRIMARY KEY` | PRD 11.1 |
 | `enrollment_id` | `BIGINT` | `NOT NULL` | `UNIQUE (enrollment_id, lesson_id)`, composite `FK (course_id, enrollment_id) -> enrollments(course_id, id) ON DELETE RESTRICT` | PRD 6.6, 12 |
-| `course_id` | `BIGINT` | `NOT NULL` | Shared parent course key binding `enrollment_id` and `lesson_id` to the exact same course | PRD 6.4, 6.6 |
+| `course_id` | `BIGINT` | `NOT NULL` | Shared parent course key binding `enrollment_id` and `lesson_id` to the identical course | PRD 6.4, 6.6 |
 | `lesson_id` | `BIGINT` | `NOT NULL` | Composite `FK (course_id, lesson_id) -> lessons(course_id, id) ON DELETE RESTRICT` | PRD 6.6, 12 |
-| `completed_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | Completion event timestamp (UTC) | PRD 6.4, 6.6 |
+| `completed_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` | UTC completion event timestamp | PRD 6.4, 6.6 |
 
-- **Relational Guarantee:** Dual composite foreign keys (`fk_lesson_progress_enrollment_course` and `fk_lesson_progress_lesson_course`) make it impossible at the database level to record completion of a lesson from Course B against an enrollment in Course A.
-- **Indexes:** `uq_lesson_progress_enrollment_lesson (enrollment_id, lesson_id)`, `idx_lesson_progress_course_lesson (course_id, lesson_id)`.
+- **Table Checks & Relational Integrity Guarantees:**
+  - `uq_lesson_progress_enrollment_lesson`: Idempotent unique constraint guaranteeing a lesson can be marked complete at most once per enrollment (repeat calls safely do nothing).
+  - **Dual Composite Foreign Keys:**
+    - `fk_lesson_progress_enrollment_course`: `(course_id, enrollment_id) REFERENCES enrollments(course_id, id)`
+    - `fk_lesson_progress_lesson_course`: `(course_id, lesson_id) REFERENCES lessons(course_id, id)`
+    - These dual composite FKs make it architecturally impossible at the database engine level to record progress on a lesson from Course B against an enrollment in Course A.
+- **Indexes:**
+  - `uq_lesson_progress_enrollment_lesson (enrollment_id, lesson_id)` (unique constraint and fast enrollment lookup)
+  - `idx_lesson_progress_course_lesson (course_id, lesson_id)` (indexes composite FK and supports course-level analytics)
 
 ---
 
