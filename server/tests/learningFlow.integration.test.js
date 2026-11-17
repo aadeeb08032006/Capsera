@@ -74,21 +74,97 @@ describe.runIf(runPgIntegration)(
       return user;
     }
 
-    afterEach(async () => {
-      if (createdCourseIds.length > 0) {
+    async function cleanupTestRecords() {
+      if (createdCourseIds.length > 0 || createdUserIds.length > 0) {
+        // 1. Delete audit logs associated with certificates for test courses/trainees
         await executeQuery(
-          `DELETE FROM courses WHERE id = ANY($1::bigint[])`,
+          `DELETE FROM audit_logs
+           WHERE target_entity = 'certificates'
+             AND target_id IN (
+               SELECT id FROM certificates
+               WHERE course_id = ANY($1::bigint[])
+                  OR trainee_id = ANY($2::bigint[])
+             )`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 2. Delete certificates
+        await executeQuery(
+          `DELETE FROM certificates
+           WHERE course_id = ANY($1::bigint[])
+              OR trainee_id = ANY($2::bigint[])`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 3. Delete lesson progress
+        await executeQuery(
+          `DELETE FROM lesson_progress
+           WHERE course_id = ANY($1::bigint[])
+              OR enrollment_id IN (
+                SELECT id FROM enrollments
+                WHERE course_id = ANY($1::bigint[])
+                   OR trainee_id = ANY($2::bigint[])
+              )`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 4. Delete enrollments
+        await executeQuery(
+          `DELETE FROM enrollments
+           WHERE course_id = ANY($1::bigint[])
+              OR trainee_id = ANY($2::bigint[])`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 5. Delete learning resources if any
+        await executeQuery(
+          `DELETE FROM learning_resources
+           WHERE course_id = ANY($1::bigint[])`,
           [createdCourseIds],
         );
-        createdCourseIds.length = 0;
-      }
-      if (createdUserIds.length > 0) {
+
+        // 6. Delete lessons
         await executeQuery(
-          `DELETE FROM users WHERE id = ANY($1::bigint[])`,
+          `DELETE FROM lessons
+           WHERE course_id = ANY($1::bigint[])`,
+          [createdCourseIds],
+        );
+
+        // 7. Delete courses
+        await executeQuery(
+          `DELETE FROM courses
+           WHERE id = ANY($1::bigint[])
+              OR trainer_id = ANY($2::bigint[])`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 8. Delete users
+        await executeQuery(
+          `DELETE FROM users
+           WHERE id = ANY($1::bigint[])`,
           [createdUserIds],
         );
+
+        createdCourseIds.length = 0;
         createdUserIds.length = 0;
       }
+    }
+
+    beforeAll(async () => {
+      const dbCheck = await executeQuery('SELECT current_database() AS db');
+      if (dbCheck.rows[0]?.db !== TEST_DB_NAME) {
+        throw new Error(
+          `Refusing to run integration tests against non-isolated database: ${dbCheck.rows[0]?.db}`,
+        );
+      }
+    });
+
+    beforeEach(async () => {
+      await cleanupTestRecords();
+    });
+
+    afterEach(async () => {
+      await cleanupTestRecords();
     });
 
     afterAll(async () => {
