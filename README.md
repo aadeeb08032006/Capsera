@@ -108,7 +108,50 @@ npm run dev:client
 
 ---
 
-## 5. Documentation & Governance
+## 5. Courses Module (Member 2)
+
+The Courses & Learning Resources module handles course authoring, lesson structuring, learning resource management with protected file uploads/downloads, trainee enrollment, and dynamic progress tracking.
+
+### 5.1 Run Database Migrations
+The module requires tables from `001_create_users_and_profiles.sql` (for trainer/trainee foreign keys) and `003_create_courses_lessons_and_enrollments.sql` (`courses`, `lessons`, `learning_resources`, `enrollments`, `lesson_progress`):
+
+```bash
+# Apply migrations sequentially using psql
+psql -h 127.0.0.1 -p 5432 -U postgres -d capsera_db -v ON_ERROR_STOP=1 \
+  -f database/migrations/001_create_users_and_profiles.sql \
+  -f database/migrations/003_create_courses_lessons_and_enrollments.sql
+```
+
+### 5.2 Seeding & Environment Setup
+1. **Admin & User Accounts:** Run the admin seed script to ensure at least one `ACTIVE` `ADMIN` account exists:
+   ```bash
+   npm run seed:admin --prefix server
+   ```
+2. **File Upload Directory:** Study materials uploaded via `POST /api/v1/courses/:courseId/resources` are stored locally under `server/uploads/` (gitignored, not served statically). The folder is automatically created by the Multer upload middleware if absent.
+
+### 5.3 Run Module Tests
+Member 2 unit, validation, and integration tests run with Vitest:
+
+```bash
+# Run all server tests (including courses, lessons, and enrollments)
+npm test --prefix server
+
+# Run courses lifecycle & visibility test suite
+npm test --prefix server -- tests/courses.test.js
+
+# Run lessons & learning resources upload/download test suite
+npm test --prefix server -- tests/lessonsAndResources.test.js
+
+# Run enrollments & progress tracking test suite
+npm test --prefix server -- tests/enrollments.test.js
+
+# Verify frontend build & components
+npm run build:client
+```
+
+---
+
+## 6. Documentation & Governance
 
 Before implementing any module endpoints or SQL migrations, review and update:
 1. [docs/DECISIONS.md](./docs/DECISIONS.md) — Approve `ADR-002` (PostgreSQL migration + proposed PRD v1.0 amendments) and resolve open team choices (`OPEN-001` through `OPEN-006`).
