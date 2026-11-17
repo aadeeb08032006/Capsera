@@ -53,6 +53,8 @@ import {
   evaluateCourseCompletionEligibility,
   issueCertificateIfEligible,
 } from '../src/modules/certificates/certificates.service.js';
+import { markLessonComplete } from '../src/modules/enrollments/enrollment.service.js';
+import { submitAttempt } from '../src/modules/assessments/assessment.service.js';
 
 function makeToken(userId) {
   return jwt.sign({ sub: String(userId) }, env.jwtSecret, { expiresIn: '1h' });
@@ -148,6 +150,20 @@ describe.runIf(runPgIntegration)(
       return id;
     }
 
+    async function seedQuestion(
+      assessmentId,
+      { questionOrder = 1, correctOption = 'A', points = 10 } = {},
+    ) {
+      const result = await executeQuery(
+        `INSERT INTO questions
+           (assessment_id, question_order, question_text, option_a, option_b, option_c, option_d, correct_option, points)
+         VALUES ($1, $2, 'Integration question?', 'Option A', 'Option B', 'Option C', 'Option D', $3, $4)
+         RETURNING id`,
+        [assessmentId, questionOrder, correctOption, points],
+      );
+      return String(result.rows[0].id);
+    }
+
     async function seedAttempt(
       assessmentId,
       traineeId,
@@ -163,6 +179,14 @@ describe.runIf(runPgIntegration)(
                    NOW(), 8, 10, $4, $5)
            RETURNING id`,
           [assessmentId, traineeId, attemptNumber, scorePercentage, isPassed],
+        );
+      } else if (status === 'IN_PROGRESS') {
+        result = await executeQuery(
+          `INSERT INTO assessment_attempts
+             (assessment_id, trainee_id, attempt_number, status, started_at)
+           VALUES ($1, $2, $3, 'IN_PROGRESS', NOW() - INTERVAL '1 minute')
+           RETURNING id`,
+          [assessmentId, traineeId, attemptNumber],
         );
       } else {
         result = await executeQuery(
@@ -219,16 +243,30 @@ describe.runIf(runPgIntegration)(
         );
       }
 
-      if (createdAttemptIds.length > 0 || createdUserIds.length > 0) {
+      if (
+        createdAttemptIds.length > 0 ||
+        createdAssessmentIds.length > 0 ||
+        createdUserIds.length > 0
+      ) {
+        await executeQuery(
+          `DELETE FROM attempt_answers
+           WHERE attempt_id = ANY($1::bigint[])
+              OR assessment_id = ANY($2::bigint[])`,
+          [createdAttemptIds, createdAssessmentIds],
+        );
         await executeQuery(
           `DELETE FROM assessment_attempts
            WHERE id = ANY($1::bigint[])
-              OR trainee_id = ANY($2::bigint[])`,
-          [createdAttemptIds, createdUserIds],
+              OR trainee_id = ANY($2::bigint[])
+              OR assessment_id = ANY($3::bigint[])`,
+          [createdAttemptIds, createdUserIds, createdAssessmentIds],
         );
       }
 
       if (createdAssessmentIds.length > 0) {
+        await executeQuery('DELETE FROM questions WHERE assessment_id = ANY($1::bigint[])', [
+          createdAssessmentIds,
+        ]);
         await executeQuery('DELETE FROM assessments WHERE id = ANY($1::bigint[])', [
           createdAssessmentIds,
         ]);
@@ -721,6 +759,440 @@ describe.runIf(runPgIntegration)(
       );
       expect(verifyMissing.status).toBe(404);
       expect(verifyMissing.body.error.code).toBe('CERTIFICATE_NOT_FOUND');
+    });
+
+    it('automatically issues one certificate and one CERTIFICATE_ISSUED audit event across lesson progress and assessment grading entry points without duplicates', async () => {
+      const traineeToken = makeToken(traineeUser.id);
+
+      // Scenario 1, 4, 8, 10: All lessons complete, no required assessment (plus incomplete progress & duplicate calls)
+      const lessonOnlyCourse = await seedCourse({ title: 'E2E-Lessons-Only' });
+      const loLesson1 = await seedLesson(lessonOnlyCourse.id, 1, 'L1');
+      const loLesson2 = await seedLesson(lessonOnlyCourse.id, 2, 'L2');
+      const loEnroll = await seedEnrollment(traineeUser.id, lessonOnlyCourse.id, 'ACTIVE');
+
+      // Scenario 4: Incomplete lesson progress (1 of 2) -> no certificate
+      const step1Res = await request(app)
+        .patch(`/api/v1/enrollments/${loEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: loLesson1 });
+      expect(step1Res.status).toBe(200);
+      expect(step1Res.body.data).toMatchObject({
+        completedLessons: 1,
+        totalLessons: 2,
+        progressPercentage: 50,
+        isComplete: false,
+        status: 'ACTIVE',
+      });
+
+      const partialCertCheck = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonOnlyCourse.id],
+      );
+      expect(partialCertCheck.rows[0].count).toBe(0);
+
+      // Scenario 1: Final lesson completed (2 of 2), no required assessment -> certificate + audit issued
+      const step2Res = await request(app)
+        .patch(`/api/v1/enrollments/${loEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: loLesson2 });
+      await trackCreatedCertificateFor(traineeUser.id, lessonOnlyCourse.id);
+      expect(step2Res.status).toBe(200);
+      expect(step2Res.body.data).toMatchObject({
+        completedLessons: 2,
+        totalLessons: 2,
+        progressPercentage: 100,
+        isComplete: true,
+        status: 'COMPLETED',
+      });
+
+      const loCertRes = await executeQuery(
+        'SELECT id, certificate_code FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonOnlyCourse.id],
+      );
+      expect(loCertRes.rows).toHaveLength(1);
+
+      const loAuditRes = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1
+           AND event_type = 'CERTIFICATE_ISSUED'`,
+        [String(loCertRes.rows[0].id)],
+      );
+      expect(loAuditRes.rows[0].count).toBe(1);
+
+      // Scenario 8 & 10: Duplicate completion request on already completed course with existing certificate
+      const duplicateStepRes = await request(app)
+        .patch(`/api/v1/enrollments/${loEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: loLesson2 });
+      expect(duplicateStepRes.status).toBe(200);
+      expect(duplicateStepRes.body.data.isComplete).toBe(true);
+      expect(duplicateStepRes.body.data.status).toBe('COMPLETED');
+
+      const loCertAfterDup = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonOnlyCourse.id],
+      );
+      const loAuditAfterDup = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1`,
+        [String(loCertRes.rows[0].id)],
+      );
+      expect(loCertAfterDup.rows[0].count).toBe(1);
+      expect(loAuditAfterDup.rows[0].count).toBe(1);
+
+      // Scenario 2 & 5: Lessons completed first, failed required assessment -> no cert; then passed -> cert issued
+      const assessLastCourse = await seedCourse({ title: 'E2E-Assessment-Last' });
+      const alLesson = await seedLesson(assessLastCourse.id, 1, 'Only Lesson');
+      const alEnroll = await seedEnrollment(traineeUser.id, assessLastCourse.id, 'ACTIVE');
+      const alAssessment = await seedAssessment(assessLastCourse.id, {
+        title: 'Required Quiz',
+        status: 'PUBLISHED',
+        isRequired: true,
+        passPercentage: 60,
+      });
+      const alQuestion = await seedQuestion(alAssessment, {
+        questionOrder: 1,
+        correctOption: 'A',
+        points: 10,
+      });
+
+      // Complete all lessons first while required assessment is not yet passed
+      const alLessonDone = await request(app)
+        .patch(`/api/v1/enrollments/${alEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: alLesson });
+      expect(alLessonDone.status).toBe(200);
+      expect(alLessonDone.body.data.progressPercentage).toBe(100);
+      expect(alLessonDone.body.data.isComplete).toBe(false);
+      expect(alLessonDone.body.data.status).toBe('ACTIVE');
+
+      // Scenario 5: Submit failing attempt (selected B instead of A) -> no certificate
+      const failAttemptId = await seedAttempt(alAssessment, traineeUser.id, {
+        attemptNumber: 1,
+        status: 'IN_PROGRESS',
+      });
+      const failSubmitRes = await request(app)
+        .post(`/api/v1/attempts/${failAttemptId}/submit`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ answers: [{ questionId: alQuestion, selectedOption: 'B' }] });
+      expect(failSubmitRes.status).toBe(200);
+      expect(failSubmitRes.body.data.attempt.isPassed).toBe(false);
+
+      const afterFailCert = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, assessLastCourse.id],
+      );
+      expect(afterFailCert.rows[0].count).toBe(0);
+
+      // Scenario 2: Submit passing attempt (selected A) -> enrollment COMPLETED + 1 certificate + 1 audit log
+      const passAttemptId = await seedAttempt(alAssessment, traineeUser.id, {
+        attemptNumber: 2,
+        status: 'IN_PROGRESS',
+      });
+      const passSubmitRes = await request(app)
+        .post(`/api/v1/attempts/${passAttemptId}/submit`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ answers: [{ questionId: alQuestion, selectedOption: 'A' }] });
+      await trackCreatedCertificateFor(traineeUser.id, assessLastCourse.id);
+      expect(passSubmitRes.status).toBe(200);
+      expect(passSubmitRes.body.data.attempt.isPassed).toBe(true);
+
+      const alEnrollAfterPass = await executeQuery(
+        'SELECT status, completed_at FROM enrollments WHERE id = $1',
+        [alEnroll.id],
+      );
+      expect(alEnrollAfterPass.rows[0].status).toBe('COMPLETED');
+      expect(alEnrollAfterPass.rows[0].completed_at).toBeTruthy();
+
+      const alCertRes = await executeQuery(
+        'SELECT id FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, assessLastCourse.id],
+      );
+      expect(alCertRes.rows).toHaveLength(1);
+
+      const alAuditRes = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1
+           AND event_type = 'CERTIFICATE_ISSUED'`,
+        [String(alCertRes.rows[0].id)],
+      );
+      expect(alAuditRes.rows[0].count).toBe(1);
+
+      // Scenario 10 on assessment entry point: 3rd passing attempt does not create duplicate cert or audit event
+      const thirdAttemptId = await seedAttempt(alAssessment, traineeUser.id, {
+        attemptNumber: 3,
+        status: 'IN_PROGRESS',
+      });
+      const thirdSubmitRes = await request(app)
+        .post(`/api/v1/attempts/${thirdAttemptId}/submit`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ answers: [{ questionId: alQuestion, selectedOption: 'A' }] });
+      expect(thirdSubmitRes.status).toBe(200);
+
+      const alCertAfterThird = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, assessLastCourse.id],
+      );
+      const alAuditAfterThird = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1`,
+        [String(alCertRes.rows[0].id)],
+      );
+      expect(alCertAfterThird.rows[0].count).toBe(1);
+      expect(alAuditAfterThird.rows[0].count).toBe(1);
+
+      // Scenario 3: Assessment passed first, final lesson completed afterward -> certificate issued on final lesson
+      const lessonLastCourse = await seedCourse({ title: 'E2E-Lesson-Last' });
+      const llLesson1 = await seedLesson(lessonLastCourse.id, 1, 'L1');
+      const llLesson2 = await seedLesson(lessonLastCourse.id, 2, 'L2');
+      const llEnroll = await seedEnrollment(traineeUser.id, lessonLastCourse.id, 'ACTIVE');
+      const llAssessment = await seedAssessment(lessonLastCourse.id, {
+        title: 'Pre-completed Quiz',
+        status: 'PUBLISHED',
+        isRequired: true,
+        passPercentage: 60,
+      });
+      const llQuestion = await seedQuestion(llAssessment, {
+        questionOrder: 1,
+        correctOption: 'C',
+        points: 10,
+      });
+
+      // Complete lesson 1 of 2
+      await request(app)
+        .patch(`/api/v1/enrollments/${llEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: llLesson1 });
+
+      // Pass required assessment while lesson 2 is still incomplete -> no certificate yet
+      const llAttemptId = await seedAttempt(llAssessment, traineeUser.id, {
+        attemptNumber: 1,
+        status: 'IN_PROGRESS',
+      });
+      const llSubmitRes = await request(app)
+        .post(`/api/v1/attempts/${llAttemptId}/submit`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ answers: [{ questionId: llQuestion, selectedOption: 'C' }] });
+      expect(llSubmitRes.status).toBe(200);
+      expect(llSubmitRes.body.data.attempt.isPassed).toBe(true);
+
+      const llCertBeforeFinalLesson = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonLastCourse.id],
+      );
+      expect(llCertBeforeFinalLesson.rows[0].count).toBe(0);
+
+      // Now complete lesson 2 of 2 -> certificate + audit event issued
+      const llFinalLessonRes = await request(app)
+        .patch(`/api/v1/enrollments/${llEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: llLesson2 });
+      await trackCreatedCertificateFor(traineeUser.id, lessonLastCourse.id);
+      expect(llFinalLessonRes.status).toBe(200);
+      expect(llFinalLessonRes.body.data.isComplete).toBe(true);
+      expect(llFinalLessonRes.body.data.status).toBe('COMPLETED');
+
+      const llCertAfterFinalLesson = await executeQuery(
+        'SELECT id FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonLastCourse.id],
+      );
+      expect(llCertAfterFinalLesson.rows).toHaveLength(1);
+
+      const llAuditAfterFinalLesson = await executeQuery(
+        `SELECT COUNT(*)::int AS count
+         FROM audit_logs
+         WHERE target_entity = 'certificates'
+           AND target_id = $1
+           AND event_type = 'CERTIFICATE_ISSUED'`,
+        [String(llCertAfterFinalLesson.rows[0].id)],
+      );
+      expect(llAuditAfterFinalLesson.rows[0].count).toBe(1);
+
+      // Scenario 6 & 7: Zero-lesson course passing attempt & cancelled enrollment -> no certificate
+      const zeroLessonCourse = await seedCourse({ title: 'E2E-Zero-Lesson-Assessment' });
+      const zlEnroll = await seedEnrollment(traineeUser.id, zeroLessonCourse.id, 'ACTIVE');
+      const zlAssessment = await seedAssessment(zeroLessonCourse.id, {
+        title: 'Zero Lesson Quiz',
+        status: 'PUBLISHED',
+        isRequired: true,
+        passPercentage: 60,
+      });
+      const zlQuestion = await seedQuestion(zlAssessment, {
+        questionOrder: 1,
+        correctOption: 'D',
+        points: 10,
+      });
+      const zlAttemptId = await seedAttempt(zlAssessment, traineeUser.id, {
+        attemptNumber: 1,
+        status: 'IN_PROGRESS',
+      });
+
+      const zlSubmitRes = await request(app)
+        .post(`/api/v1/attempts/${zlAttemptId}/submit`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ answers: [{ questionId: zlQuestion, selectedOption: 'D' }] });
+      expect(zlSubmitRes.status).toBe(200);
+      expect(zlSubmitRes.body.data.attempt.isPassed).toBe(true);
+
+      const zlEnrollCheck = await executeQuery(
+        'SELECT status FROM enrollments WHERE id = $1',
+        [zlEnroll.id],
+      );
+      const zlCertCheck = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, zeroLessonCourse.id],
+      );
+      expect(zlEnrollCheck.rows[0].status).toBe('ACTIVE');
+      expect(zlCertCheck.rows[0].count).toBe(0);
+
+      // Scenario 7: Cancelled enrollment rejected by progress endpoint (409) and produces 0 certificates
+      const cancelledCourse = await seedCourse({ title: 'E2E-Cancelled-Enrollment' });
+      const cancelledLesson = await seedLesson(cancelledCourse.id, 1, 'L1');
+      const cancelledEnroll = await seedEnrollment(
+        traineeUser.id,
+        cancelledCourse.id,
+        'CANCELLED',
+      );
+      const cancelledRes = await request(app)
+        .patch(`/api/v1/enrollments/${cancelledEnroll.id}/progress`)
+        .set('Authorization', `Bearer ${traineeToken}`)
+        .send({ lessonId: cancelledLesson });
+      expect(cancelledRes.status).toBe(409);
+      expect(cancelledRes.body.error.code).toBe('ENROLLMENT_INACTIVE');
+
+      const cancelledCertCheck = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, cancelledCourse.id],
+      );
+      expect(cancelledCertCheck.rows[0].count).toBe(0);
+    });
+
+    it('rolls back lesson_progress, attempt grading, enrollment, and certificate writes when audit logging fails in markLessonComplete or submitAttempt', async () => {
+      // 1. Rollback in markLessonComplete when audit_logs insert fails
+      const lessonCourse = await seedCourse({ title: 'E2E-Lesson-Audit-Rollback' });
+      const lessonId = await seedLesson(lessonCourse.id, 1, 'Only Lesson');
+      const lessonEnroll = await seedEnrollment(traineeUser.id, lessonCourse.id, 'ACTIVE');
+
+      await expect(
+        withTransaction(async (client) => {
+          const originalQuery = client.query.bind(client);
+          const querySpy = vi.spyOn(client, 'query').mockImplementation((sql, params) => {
+            if (typeof sql === 'string' && sql.includes('INSERT INTO audit_logs')) {
+              return Promise.reject(new Error('Simulated audit failure in markLessonComplete'));
+            }
+            return originalQuery(sql, params);
+          });
+
+          try {
+            return await markLessonComplete(
+              lessonEnroll.id,
+              lessonId,
+              { id: traineeUser.id, role: 'TRAINEE', status: 'ACTIVE' },
+              { client },
+            );
+          } finally {
+            querySpy.mockRestore();
+          }
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
+
+      const progressAfterRollback = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM lesson_progress WHERE enrollment_id = $1',
+        [lessonEnroll.id],
+      );
+      const enrollAfterLessonRollback = await executeQuery(
+        'SELECT status, completed_at FROM enrollments WHERE id = $1',
+        [lessonEnroll.id],
+      );
+      const certAfterLessonRollback = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, lessonCourse.id],
+      );
+      expect(progressAfterRollback.rows[0].count).toBe(0);
+      expect(enrollAfterLessonRollback.rows[0].status).toBe('ACTIVE');
+      expect(enrollAfterLessonRollback.rows[0].completed_at).toBeNull();
+      expect(certAfterLessonRollback.rows[0].count).toBe(0);
+
+      // 2. Rollback in submitAttempt when audit_logs insert fails
+      const assessCourse = await seedCourse({ title: 'E2E-Attempt-Audit-Rollback' });
+      const assessLesson = await seedLesson(assessCourse.id, 1, 'L1');
+      const assessEnroll = await seedEnrollment(traineeUser.id, assessCourse.id, 'ACTIVE');
+      await markLessonCompleted(assessEnroll.id, assessCourse.id, assessLesson);
+      const assessmentId = await seedAssessment(assessCourse.id, {
+        title: 'Rollback Quiz',
+        status: 'PUBLISHED',
+        isRequired: true,
+        passPercentage: 60,
+      });
+      const questionId = await seedQuestion(assessmentId, {
+        questionOrder: 1,
+        correctOption: 'A',
+        points: 10,
+      });
+      const attemptId = await seedAttempt(assessmentId, traineeUser.id, {
+        attemptNumber: 1,
+        status: 'IN_PROGRESS',
+      });
+
+      await expect(
+        withTransaction(async (client) => {
+          const originalQuery = client.query.bind(client);
+          const querySpy = vi.spyOn(client, 'query').mockImplementation((sql, params) => {
+            if (typeof sql === 'string' && sql.includes('INSERT INTO audit_logs')) {
+              return Promise.reject(new Error('Simulated audit failure in submitAttempt'));
+            }
+            return originalQuery(sql, params);
+          });
+
+          try {
+            return await submitAttempt(
+              attemptId,
+              { answers: [{ questionId, selectedOption: 'A' }] },
+              { id: traineeUser.id, role: 'TRAINEE', status: 'ACTIVE' },
+              { client },
+            );
+          } finally {
+            querySpy.mockRestore();
+          }
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 500,
+        code: 'INTERNAL_SERVER_ERROR',
+      });
+
+      const attemptAfterRollback = await executeQuery(
+        'SELECT status, is_passed FROM assessment_attempts WHERE id = $1',
+        [attemptId],
+      );
+      const answersAfterRollback = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM attempt_answers WHERE attempt_id = $1',
+        [attemptId],
+      );
+      const enrollAfterAttemptRollback = await executeQuery(
+        'SELECT status, completed_at FROM enrollments WHERE id = $1',
+        [assessEnroll.id],
+      );
+      const certAfterAttemptRollback = await executeQuery(
+        'SELECT COUNT(*)::int AS count FROM certificates WHERE trainee_id = $1 AND course_id = $2',
+        [traineeUser.id, assessCourse.id],
+      );
+      expect(attemptAfterRollback.rows[0].status).toBe('IN_PROGRESS');
+      expect(attemptAfterRollback.rows[0].is_passed).toBeNull();
+      expect(answersAfterRollback.rows[0].count).toBe(0);
+      expect(enrollAfterAttemptRollback.rows[0].status).toBe('ACTIVE');
+      expect(enrollAfterAttemptRollback.rows[0].completed_at).toBeNull();
+      expect(certAfterAttemptRollback.rows[0].count).toBe(0);
     });
   },
 );
