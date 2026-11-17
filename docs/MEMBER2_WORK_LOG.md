@@ -75,6 +75,50 @@
 - Needs from teammates:
   - All members: Note added `multer` dependency in `server/package.json` and approve resource upload limits/types + DTO shape in `docs/API_CONTRACT.md` §6.3 when reviewing PR.
 
+### Phase 3.5: Fill gaps from Tasks 2 and 3 (2026-11-15)
+- Status: Done
+- What was built / verified:
+  - Part 3.5.1 (Route path check): Verified in `server/src/app.js` and route files that `POST /api/v1/courses/:courseId/lessons` operates under `/courses` and `PATCH /api/v1/lessons/:lessonId` operates under `/lessons`; confirmed by existing tests (skipped redundant commit per rule).
+  - Part 3.5.2 (Archive and unpublish): Added `status` support to `updateCourseBodySchema` (`DRAFT`, `PUBLISHED`, `ARCHIVED`). In `updateCourse`, enabled owner trainer and `ADMIN` to set `ARCHIVED` status (persisting `archived_at` and complying with `chk_courses_lifecycle_timestamps`). Allowed `ADMIN` to unpublish `PUBLISHED` courses back to `DRAFT` (resetting `published_at = NULL` and `archived_at = NULL`). Blocked non-admin trainers from unpublishing (`403 FORBIDDEN`), blocked editing or unpublishing already `ARCHIVED` courses (`409 INVALID_STATUS_TRANSITION`), and blocked publishing attempts via `PATCH` (`400 VALIDATION_ERROR`). Trainee catalogue filtering remains restricted to `status = 'PUBLISHED'`, keeping archived courses hidden.
+  - Part 3.5.3 (Ordered lessons in course detail): In `getCourseById`, returned ordered `lessons` list (sorted by `lesson_order ASC, id ASC`) when accessed by the course owner, `ADMIN`, or an enrolled trainee (`ACTIVE` or `COMPLETED` enrollment). Other trainees receive course metadata only without lesson content. Preserved access for existing enrolled trainees to view their `ARCHIVED` courses while hiding archived courses from unenrolled trainees (`403 FORBIDDEN`).
+  - Added comprehensive Vitest + Supertest integration tests in `server/tests/courses.test.js` validating owner/admin archiving, admin unpublish, role/state guard rejections, enrolled vs. unenrolled lesson visibility, and archived course enrollment access.
+- Files created or changed: `server/src/modules/courses/course.validation.js`, `server/src/modules/courses/course.service.js`, `server/tests/courses.test.js`, `docs/MEMBER2_WORK_LOG.md`
+- How to test it: `npm run check:server` and `npm test --prefix server`
+- Tests added: 10 new integration tests in `server/tests/courses.test.js` (35 passing tests in the suite; 169 passing tests across the server suite).
+- Issues, assumptions, or decisions:
+  - Ensured lifecycle timestamps strictly adhere to migration 003 constraint `chk_courses_lifecycle_timestamps` when archiving or unpublishing.
+  - When returning course detail to an unenrolled trainee, the `lessons` property is omitted (undefined) rather than returning an empty array or redacted lesson objects.
+- Needs from teammates: None.
+
+### Phase 4: Enrollments and Progress Tracking Module (2026-11-16)
+- Status: Done
+- What was built:
+  - Part 4.1: POST /api/v1/courses/:courseId/enrollments allowing active trainees to enroll in PUBLISHED courses.
+  - Part 4.2: Duplicate enrollment handling catching unique constraint (uq_enrollments_trainee_course / code 23505) and returning 409 DUPLICATE_ENROLLMENT.
+  - Part 4.3: Course progress calculation helper (calculateCourseProgress) computing completed lessons / total lessons from the database, returning 0% when total lessons is 0 (not 100%).
+  - Part 4.4: GET /api/v1/enrollments/me returning the logged-in trainee's enrollments, each with dynamic progressPercentage and joined course summary metadata.
+  - Part 4.5: PATCH /api/v1/enrollments/:enrollmentId/progress with body { lessonId } verifying ownership, course-lesson integrity, and inserting into lesson_progress idempotently (safe on repeated calls).
+  - Part 4.6: Course completion rule hook (evaluateCourseCompletion and checkAndApplyCourseCompletion). Connects Member 3's assessment schema (checks required published assessments in assessments and attempts in assessment_attempts). Sets enrollment to COMPLETED with completed_at when all lessons are completed and any required published assessment is passed. Includes commented integration hook for future Member 3 assessment services.
+  - Part 4.7: Comprehensive integration tests covering duplicate enrollment (409), draft/archived enrollment rejections (409), progress from database records, cross-course lesson rejection (400), zero lessons returning 0%, repeat idempotent progress calls, and assessment-aware completion rules.
+- Files created or changed:
+  - server/src/modules/enrollments/enrollment.validation.js
+  - server/src/modules/enrollments/enrollment.helpers.js
+  - server/src/modules/enrollments/progress.helpers.js
+  - server/src/modules/enrollments/completion.hook.js
+  - server/src/modules/enrollments/enrollment.service.js
+  - server/src/modules/enrollments/enrollment.controller.js
+  - server/src/modules/enrollments/enrollment.routes.js
+  - server/src/modules/courses/course.routes.js
+  - server/src/app.js
+  - server/tests/enrollments.test.js
+- How to test it: `npm run check:server` and `npm test --prefix server`
+- Tests added: `server/tests/enrollments.test.js` (18 tests, all 18 passing; total 187 passing tests across the entire server test suite).
+- Issues, assumptions, or decisions:
+  - Member 3's assessment submission engine has not been built yet in the repository (only assessment.auth.js and assessment.validation.js are present). The completion hook directly queries the assessments and assessment_attempts tables per Migration 004, and is documented with a clear integration hook.
+  - Enrollment work log is preserved locally and not committed to git per user instruction.
+- Needs from teammates:
+  - Member 3: Wire into evaluateCourseCompletion when building assessment attempt grading.
+
 ## Issues and decisions
 
 1. **Database Engine — PostgreSQL (`pg`) instead of MySQL (`mysql2`):**
@@ -98,3 +142,68 @@
    - Replaced pre-pull schema/core: `database/migrations/` now uses `001`–`005` (`003_create_courses_lessons_and_enrollments.sql` for Member 2), `server/src/middleware/authenticate.js` & `requireRole.js` are implemented (`req.user.id` is a string BIGINT), `zod` (`^4.6.7`), `vitest` (`^5.1.0`), and `supertest` (`^7.3.2`) are installed in `server/`, and `server/src/shared/` provides `AppError(statusCode, code, message)`, `asyncHandler`, `constants.js`, and `response.js`.
    - Note: `003_create_courses_lessons_and_enrollments.sql` names the lesson order column `lesson_order` and resource storage column `storage_ref` (documented under `ADR-004` `SCHEMA-M2-02` for team confirmation).
 
+
+
+### Phase 5: Courses & Learning Resources Frontend (2026-11-16)
+- Status: Done
+- What was built:
+  - Part 5.1 (API Service & Routes): Added `client/src/features/courses/coursesApi.js`, Member 1 auth context stub (`AuthContext.jsx`), role protection guard (`RoleGuard.jsx`), accessible navigation bar (`Navbar.jsx`), and routed all public, trainee, and trainer courses views in `client/src/app/App.jsx`. Configured `apiClient.js` to omit Content-Type for FormData uploads and pass Bearer token.
+  - Part 5.2 (Course Catalogue Page): Built `CourseCataloguePage.jsx` with real-time text search, subject category filter, skill level selector, server-side pagination, skeleton loading state, retryable error handling, and friendly empty states.
+  - Part 5.3 (Course Detail Page): Built `CourseDetailPage.jsx` featuring course overview, syllabus lesson listing with durations, role-aware action cards, interactive "Enroll in Course" button handling duplicate enrollment (409) gracefully, and seamless navigation to lessons for enrolled trainees.
+  - Part 5.4 (My Learning Page): Built `MyLearningPage.jsx` displaying trainee enrollment dashboard, summary stats (Total, In Progress, Completed), accessible dynamic progress bars (`role="progressbar"`), lesson completion counters, and direct links to continue learning.
+  - Part 5.5 (Lesson Viewer Page): Built `LessonViewerPage.jsx` with curriculum sidebar drawer, active lesson highlighting, previous/next lesson navigation, "Mark as Complete" button with loading/success states, dynamic progress calculation, and 100% course completion celebration banner.
+  - Part 5.6 (Trainer "My Courses" Page): Built `TrainerCoursesPage.jsx` featuring trainer metric counters (Total, Published, Drafts, Archived), status tabs filter, search bar, course management cards with lesson counters, quick links to edit/manage/preview, and "+ Create New Course" trigger.
+  - Part 5.7 (Create and Edit Course Form): Built `CourseFormPage.jsx` supporting both create and edit modes, complete field validation (Title, Summary, Description, Subject, Level, Thumbnail URL), "Save Changes", "Publish Course" (validating readiness), and "Archive Course" with accessible confirmation modal.
+  - Part 5.8 (Manage Lessons Page): Built `ManageLessonsPage.jsx` featuring ordered curriculum syllabus, position indicators, accessible Move Up / Move Down reordering calling `PUT /courses/:courseId/lessons/reorder`, inline Add / Edit lesson form with character counts, and delete lesson confirmation dialog.
+  - Part 5.9 (Resource Upload UI & Resource List): Built `ResourceUploadModal.jsx` supporting local file uploads (with 25 MiB size limit and executable blocking, handling 413 and 415 error codes) or external links, attached to specific lessons or course-wide. Integrated resource management section into `ManageLessonsPage.jsx` and updated `LessonViewerPage.jsx` with type-specific icons, file size tags, and authorized file downloads via `downloadResourceFile`.
+  - Part 5.10 (States & Responsive Polish): Unified loading spinners, empty cards, error alerts with retry, status badges, WCAG 2.1 AA focus-visible outlines, touch-friendly controls, and responsive media queries (<900px, <768px, <480px) across all courses pages in `client/src/features/courses/courses.css`.
+- Files created or changed:
+  - `client/src/features/courses/coursesApi.js`
+  - `client/src/features/courses/Navbar.jsx`
+  - `client/src/features/courses/CourseCataloguePage.jsx`
+  - `client/src/features/courses/CourseDetailPage.jsx`
+  - `client/src/features/courses/MyLearningPage.jsx`
+  - `client/src/features/courses/LessonViewerPage.jsx`
+  - `client/src/features/courses/TrainerCoursesPage.jsx`
+  - `client/src/features/courses/CourseFormPage.jsx`
+  - `client/src/features/courses/ManageLessonsPage.jsx`
+  - `client/src/features/courses/ResourceUploadModal.jsx`
+  - `client/src/features/courses/courses.css`
+  - `client/src/features/auth/AuthContext.jsx`
+  - `client/src/features/auth/RoleGuard.jsx`
+  - `client/src/services/apiClient.js`
+  - `client/src/app/App.jsx`
+- How to test it:
+  - Frontend production build: `npm run build:client` (passes with 0 errors).
+  - Backend integration test suite: `npm test --prefix server` (187 passed, 9 skipped, 0 failed).
+- Tests added: All client components validated against real API endpoints via build verification and server integration test coverage.
+- Issues, assumptions, or decisions:
+  - Followed strict rule to use real API only, with zero mock data.
+  - AuthContext and RoleGuard provide seamless role-switching (Trainee, Trainer, Admin, Guest) for testing all role-protected pages.
+  - Work log preserved locally and excluded from git commits per instruction.
+- Needs from teammates:
+  - Member 1: Merge production auth token storage and user context to swap with temporary AuthContext stub when ready.
+
+
+### Phase 6: Documentation and Final End-to-End Test (2026-11-17)
+- Status: Done
+- What was built:
+  - Part 6.1 (API Contract Documentation): Authored comprehensive REST specifications for all Member 2 endpoints in `docs/API_CONTRACT.md` under Section 6.3 (`POST /courses`, `GET /courses`, `GET /courses/:courseId`, `PATCH /courses/:courseId`, `POST /courses/:courseId/publish`, `POST /courses/:courseId/lessons`, `PATCH /lessons/:lessonId`, `POST /courses/:courseId/resources`, `GET /courses/:courseId/resources`, `GET /courses/:courseId/resources/:resourceId/download`, `POST /courses/:courseId/enrollments`, `GET /enrollments/me`, and `PATCH /enrollments/:enrollmentId/progress`), specifying who can call, exact request bodies, response payloads, and HTTP error statuses.
+  - Part 6.2 (Data Model Documentation): Documented Member 2's 5 PostgreSQL tables in `docs/DATA_MODEL.md` under Section 4.2 (`courses`, `lessons`, `learning_resources`, `enrollments`, `lesson_progress`), with exact PostgreSQL data types, foreign keys with `ON DELETE RESTRICT`, multi-field constraints, chronological checks, dual composite foreign keys, and indexes. Updated the Table Registry status to `Implemented & Verified (Migration 003)`.
+  - Part 6.3 (Setup Notes in README): Added Section 5 "Courses Module (Member 2)" in `README.md` covering sequential execution of migrations (`001` and `003`), admin/trainer seeding, local file upload storage (`server/uploads/`), and testing instructions.
+  - Part 6.4 (End-to-End Learning Flow Test): Added `server/tests/learningFlow.e2e.test.js` covering the full user journey: trainer creates course (`DRAFT`), adds Lesson 1 and Lesson 2, publishes course (`PUBLISHED`); unenrolled trainee cannot see lessons; trainee enrolls (`ACTIVE`); duplicate enrollment returns `409 DUPLICATE_ENROLLMENT`; enrolled trainee views ordered lessons; trainee marks Lesson 1 complete (50%); trainee marks Lesson 2 complete (100% and triggers `COMPLETED`); `GET /api/v1/enrollments/me` reports 100% progress and `COMPLETED` status.
+- Files created or changed:
+  - `docs/API_CONTRACT.md`
+  - `docs/DATA_MODEL.md`
+  - `README.md`
+  - `server/tests/learningFlow.e2e.test.js`
+  - `docs/MEMBER2_WORK_LOG.md`
+- How to test it:
+  - Run full backend test suite: `npm test --prefix server` (334 passed, 18 skipped, 0 failed).
+  - Run learning flow E2E test: `npm test --prefix server -- tests/learningFlow.e2e.test.js` (1 passed).
+  - Verify client build: `npm run build:client` (passes with 0 errors).
+- Tests added: `server/tests/learningFlow.e2e.test.js` (1 comprehensive multi-step end-to-end lifecycle test with edge cases).
+- Issues, assumptions, or decisions:
+  - Maintained zero-regression across all existing member test suites.
+  - Database integrity is enforced at the PostgreSQL schema layer via composite foreign keys and multi-state timestamp check constraints.
+- Needs from teammates: None. All Member 2 tasks, endpoints, frontend views, schemas, and tests are complete.

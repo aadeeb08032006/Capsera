@@ -10,7 +10,31 @@ export default function Navbar() {
     navigate('/login', { replace: true });
   }
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <nav className="navbar" aria-label="Main navigation">
+        <div className="navbar-inner">
+          <Link to="/" className="navbar-brand">
+            CAPSERA
+          </Link>
+
+          <div className="navbar-links">
+            <Link to="/courses">Courses</Link>
+            <Link to="/certificates/verify">Verify Certificate</Link>
+          </div>
+
+          <div className="navbar-user">
+            <Link to="/login" className="navbar-account-link">
+              Log in
+            </Link>
+            <Link to="/signup" className="auth-btn auth-btn--primary auth-btn--sm">
+              Sign up
+            </Link>
+          </div>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className="navbar" aria-label="Main navigation">
@@ -20,18 +44,22 @@ export default function Navbar() {
         </Link>
 
         <div className="navbar-links">
+          <Link to="/courses">Courses</Link>
+
           {user.role === 'ADMIN' && (
             <>
               <Link to="/admin/dashboard">Admin Dashboard</Link>
               <Link to="/admin/users">Users</Link>
               <Link to="/admin/skills">Skill Catalogue</Link>
               <Link to="/admin/announcements">Announcements</Link>
+              <Link to="/trainer/courses">Manage Courses</Link>
               <Link to="/trainers/recommendations">Trainer Recommendations</Link>
             </>
           )}
 
           {user.role === 'TRAINER' && (
             <>
+              <Link to="/trainer/courses">My Courses</Link>
               <Link to="/profile">Profile</Link>
               <Link to="/trainer/skills">My Trainer Skills</Link>
             </>
@@ -39,6 +67,7 @@ export default function Navbar() {
 
           {user.role === 'TRAINEE' && (
             <>
+              <Link to="/my-learning">My Learning</Link>
               <Link to="/profile">Profile</Link>
               <Link to="/skills">My Skills</Link>
               <Link to="/trainers/recommendations">Trainer Recommendations</Link>

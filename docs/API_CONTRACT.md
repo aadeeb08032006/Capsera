@@ -448,20 +448,539 @@ Response `200`:
 Errors: 400 `VALIDATION_ERROR`, 401 `UNAUTHENTICATED`, 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` / `ACCOUNT_SUSPENDED` / `FORBIDDEN`, 404 `SKILL_NOT_FOUND`.
 
 ### 6.3 Courses, Lessons, Resources & Enrollments (Owner: Member 2)
+
 | Method & Path | Access | Contract Status |
 |---|---|---|
-| `GET /api/v1/courses` | Authenticated (`PUBLISHED` for trainees; role-filtered for trainers/admin) | **UNRESOLVED:** Filter/search query parameters |
-| `POST /api/v1/courses` | `TRAINER` | **UNRESOLVED:** Required draft vs publish fields |
-| `GET /api/v1/courses/:courseId` | Authenticated (visibility rules apply) | **UNRESOLVED:** Whether lessons/assessments are embedded or separate |
-| `PATCH /api/v1/courses/:courseId` | Course Owner `TRAINER` or `ADMIN` | **UNRESOLVED:** Updatable fields & archive transition |
-| `POST /api/v1/courses/:courseId/publish` | Course Owner `TRAINER` or `ADMIN` | **UNRESOLVED:** Pre-publish validation errors |
-| `POST /api/v1/courses/:courseId/lessons` | Course Owner `TRAINER` | **UNRESOLVED:** Lesson ordering field (`lessonOrder` / `position`) |
-| `PATCH /api/v1/lessons/:lessonId` | Course Owner `TRAINER` | **UNRESOLVED:** Reordering and edit payload |
-| `POST /api/v1/courses/:courseId/resources` | Course Owner `TRAINER` | **UNRESOLVED:** Multipart upload vs metadata + storage URL contract |
-| `GET /api/v1/courses/:courseId/resources` | Enrolled `TRAINEE`, Owner `TRAINER`, `ADMIN` | **UNRESOLVED:** Resource DTO & protected download mechanism |
-| `POST /api/v1/courses/:courseId/enrollments` | `TRAINEE` | **UNRESOLVED:** Duplicate enrollment response (`409` vs `200`, see `OPEN-005`) |
-| `GET /api/v1/enrollments/me` | `TRAINEE` | **UNRESOLVED:** Progress summary fields included per enrollment |
-| `PATCH /api/v1/enrollments/:enrollmentId/progress` | Enrolled `TRAINEE` | **UNRESOLVED:** Request payload (`lessonId`, `completed`) & completion side-effects |
+| `POST /api/v1/courses` | `TRAINER`, `ADMIN` | Implemented |
+| `GET /api/v1/courses` | Authenticated (`ACTIVE`) | Implemented |
+| `GET /api/v1/courses/:courseId` | Authenticated (`ACTIVE`) | Implemented |
+| `PATCH /api/v1/courses/:courseId` | Course Owner `TRAINER`, `ADMIN` | Implemented |
+| `POST /api/v1/courses/:courseId/publish` | Course Owner `TRAINER`, `ADMIN` | Implemented |
+| `POST /api/v1/courses/:courseId/lessons` | Course Owner `TRAINER`, `ADMIN` | Implemented |
+| `PATCH /api/v1/lessons/:lessonId` | Course Owner `TRAINER`, `ADMIN` | Implemented |
+| `POST /api/v1/courses/:courseId/resources` | Course Owner `TRAINER`, `ADMIN` | Implemented |
+| `GET /api/v1/courses/:courseId/resources` | Enrolled `TRAINEE`, Owner `TRAINER`, `ADMIN` | Implemented |
+| `GET /api/v1/courses/:courseId/resources/:resourceId/download` | Enrolled `TRAINEE`, Owner `TRAINER`, `ADMIN` | Implemented |
+| `POST /api/v1/courses/:courseId/enrollments` | `TRAINEE` | Implemented |
+| `GET /api/v1/enrollments/me` | `TRAINEE` | Implemented |
+| `PATCH /api/v1/enrollments/:enrollmentId/progress` | Enrolled `TRAINEE` | Implemented |
+
+**Common Rules:**
+- All primary and foreign keys are returned as strings (`BIGINT` representation per `SCHEMA-M1-01`).
+- All timestamps are ISO 8601 UTC strings (e.g., `"2026-11-16T12:00:00.000Z"`).
+- `trainerId` is always derived securely from the authenticated session for `TRAINER` requests and cannot be spoofed in request bodies.
+- Unenrolled trainees only see published courses and cannot access lesson content or learning resources.
+
+---
+
+#### 1. POST /api/v1/courses
+- **Who can call:** `TRAINER`, `ADMIN` (`status === 'ACTIVE'`).
+- **Description:** Creates a new course in `DRAFT` status. For `TRAINER`, `trainerId` is set to the logged-in user. For `ADMIN`, `trainerId` can optionally be assigned to an active trainer.
+- **Request Body:**
+  ```json
+  {
+    "title": "Digital Governance and Public Administration",
+    "summary": "Foundational course on digital service delivery in government.",
+    "description": "Comprehensive curriculum covering policy frameworks, architecture, and change management.",
+    "subject": "Public Administration",
+    "level": "BEGINNER",
+    "thumbnailUrl": "https://images.example.com/course-cover.png"
+  }
+  ```
+  - `title`: Required string, 1–200 characters.
+  - `summary`: Optional nullable string, max 500 characters.
+  - `description`: Optional nullable string, max 20,000 characters.
+  - `subject`: Optional nullable string, max 120 characters.
+  - `level`: Optional enum (`"BEGINNER"`, `"INTERMEDIATE"`, `"ADVANCED"`).
+  - `thumbnailUrl`: Optional nullable HTTP/HTTPS URL, max 2,048 characters.
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "course": {
+        "id": "1",
+        "trainerId": "2",
+        "title": "Digital Governance and Public Administration",
+        "summary": "Foundational course on digital service delivery in government.",
+        "description": "Comprehensive curriculum covering policy frameworks, architecture, and change management.",
+        "subject": "Public Administration",
+        "level": "BEGINNER",
+        "thumbnailUrl": "https://images.example.com/course-cover.png",
+        "status": "DRAFT",
+        "publishedAt": null,
+        "archivedAt": null,
+        "createdAt": "2026-11-16T10:00:00.000Z",
+        "updatedAt": "2026-11-16T10:00:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Empty title, invalid URL, or non-whitelisted fields.
+  - `401 UNAUTHENTICATED`: Missing or invalid bearer token.
+  - `403 FORBIDDEN` / `ACCOUNT_PENDING`: Inactive status or calling user is `TRAINEE`.
+
+---
+
+#### 2. GET /api/v1/courses
+- **Who can call:** Authenticated (`ACTIVE`).
+- **Description:** Lists paginated courses.
+  - `TRAINEE`: Sees only `PUBLISHED` courses.
+  - `TRAINER`: Sees `PUBLISHED` courses plus their own `DRAFT` and `ARCHIVED` courses (supports `mine=true` filter).
+  - `ADMIN`: Sees all courses across all statuses.
+- **Query Parameters:**
+  - `page` (optional integer >= 1, default `1`)
+  - `pageSize` (optional integer 1–100, default `20`)
+  - `subject` (optional string, max 120 chars)
+  - `level` (optional enum: `"BEGINNER"`, `"INTERMEDIATE"`, `"ADVANCED"`)
+  - `search` (optional string, matches title/summary with wildcard escaping)
+  - `mine` (optional `"true"` for trainer's own courses)
+  - `status` (optional enum: `"DRAFT"`, `"PUBLISHED"`, `"ARCHIVED"`; restricted by role)
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "items": [
+        {
+          "id": "1",
+          "trainerId": "2",
+          "trainerName": "Jane Trainer",
+          "title": "Digital Governance and Public Administration",
+          "summary": "Foundational course on digital service delivery in government.",
+          "subject": "Public Administration",
+          "level": "BEGINNER",
+          "thumbnailUrl": "https://images.example.com/course-cover.png",
+          "status": "PUBLISHED",
+          "lessonCount": 4,
+          "publishedAt": "2026-11-16T11:00:00.000Z",
+          "archivedAt": null,
+          "createdAt": "2026-11-16T10:00:00.000Z",
+          "updatedAt": "2026-11-16T11:00:00.000Z"
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "pageSize": 20,
+        "totalItems": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Invalid page/pageSize or unrecognized filter value.
+  - `401 UNAUTHENTICATED`: Missing or expired token.
+
+---
+
+#### 3. GET /api/v1/courses/:courseId
+- **Who can call:** Authenticated (`ACTIVE`).
+- **Description:** Returns detailed course view.
+  - **Course Owner `TRAINER`, `ADMIN`, or Enrolled `TRAINEE`:** Returns course info plus ordered `lessons` list (with lesson content and estimated duration).
+  - **Unenrolled `TRAINEE`:** Returns course info only (the `lessons` key is omitted). If course is `DRAFT` or `ARCHIVED`, returns `404 COURSE_NOT_FOUND` / `403 FORBIDDEN`.
+- **Response (200 OK - Enrolled / Owner / Admin):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "course": {
+        "id": "1",
+        "trainerId": "2",
+        "trainerName": "Jane Trainer",
+        "title": "Digital Governance and Public Administration",
+        "summary": "Foundational course on digital service delivery in government.",
+        "description": "Detailed syllabus description...",
+        "subject": "Public Administration",
+        "level": "BEGINNER",
+        "thumbnailUrl": "https://images.example.com/course-cover.png",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-16T11:00:00.000Z",
+        "archivedAt": null,
+        "createdAt": "2026-11-16T10:00:00.000Z",
+        "updatedAt": "2026-11-16T11:00:00.000Z",
+        "lessons": [
+          {
+            "id": "10",
+            "courseId": "1",
+            "title": "Introduction to Public Services",
+            "content": "Welcome to Lesson 1...",
+            "position": 1,
+            "estimatedDurationMinutes": 15,
+            "createdAt": "2026-11-16T10:30:00.000Z",
+            "updatedAt": "2026-11-16T10:30:00.000Z"
+          }
+        ]
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `401 UNAUTHENTICATED`: Missing token.
+  - `403 FORBIDDEN`: Trainee attempting to open un-enrolled draft or archived course.
+  - `404 COURSE_NOT_FOUND`: Non-existent course ID.
+
+---
+
+#### 4. PATCH /api/v1/courses/:courseId
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`.
+- **Description:** Updates course metadata or changes lifecycle status.
+  - Owner or `ADMIN` can update fields and can set `status: "ARCHIVED"`.
+  - Only `ADMIN` can unpublish a `PUBLISHED` course back to `DRAFT`.
+  - Setting `status: "PUBLISHED"` directly via PATCH is rejected; use the `/publish` endpoint.
+- **Request Body (at least one field required):**
+  ```json
+  {
+    "title": "Digital Governance and Public Sector Delivery",
+    "summary": "Updated course overview...",
+    "level": "INTERMEDIATE",
+    "status": "ARCHIVED"
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "course": {
+        "id": "1",
+        "trainerId": "2",
+        "title": "Digital Governance and Public Sector Delivery",
+        "summary": "Updated course overview...",
+        "description": "...",
+        "subject": "Public Administration",
+        "level": "INTERMEDIATE",
+        "thumbnailUrl": null,
+        "status": "ARCHIVED",
+        "publishedAt": "2026-11-16T11:00:00.000Z",
+        "archivedAt": "2026-11-16T15:00:00.000Z",
+        "createdAt": "2026-11-16T10:00:00.000Z",
+        "updatedAt": "2026-11-16T15:00:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Empty body, invalid fields, or attempting to set status to `PUBLISHED`.
+  - `403 FORBIDDEN`: Non-owner trainer, or non-admin attempting to unpublish to `DRAFT`.
+  - `404 COURSE_NOT_FOUND`: Course does not exist.
+  - `409 INVALID_STATUS_TRANSITION`: Attempting to edit or unpublish an already `ARCHIVED` course.
+
+---
+
+#### 5. POST /api/v1/courses/:courseId/publish
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`.
+- **Description:** Validates course publication readiness (`title`, `description`, `subject`, and `level` must all be non-empty) and transitions status from `DRAFT` to `PUBLISHED`, setting `publishedAt = NOW()`.
+- **Request Body:** Empty `{}`.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "course": {
+        "id": "1",
+        "trainerId": "2",
+        "title": "Digital Governance and Public Administration",
+        "summary": "Foundational course...",
+        "description": "Full description...",
+        "subject": "Public Administration",
+        "level": "BEGINNER",
+        "thumbnailUrl": null,
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-16T12:00:00.000Z",
+        "archivedAt": null,
+        "createdAt": "2026-11-16T10:00:00.000Z",
+        "updatedAt": "2026-11-16T12:00:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Missing description, subject, or level.
+  - `403 FORBIDDEN`: Non-owner trainer.
+  - `404 COURSE_NOT_FOUND`: Course does not exist.
+  - `409 INVALID_STATUS_TRANSITION`: Course is already `PUBLISHED` or `ARCHIVED`.
+
+---
+
+#### 6. POST /api/v1/courses/:courseId/lessons
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`.
+- **Description:** Adds a lesson to the course. Automatically computes and assigns the next sequence position (`MAX(lesson_order) + 1`).
+- **Request Body:**
+  ```json
+  {
+    "title": "Module 1: Citizen-Centric Service Architecture",
+    "content": "In this lesson we study architecture principles...",
+    "estimatedDurationMinutes": 25
+  }
+  ```
+  - `title`: Required string, 1–200 characters.
+  - `content`: Optional nullable string, max 50,000 characters.
+  - `estimatedDurationMinutes`: Optional nullable integer, 1–10,080 minutes.
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "lesson": {
+        "id": "11",
+        "courseId": "1",
+        "title": "Module 1: Citizen-Centric Service Architecture",
+        "content": "In this lesson we study architecture principles...",
+        "position": 2,
+        "estimatedDurationMinutes": 25,
+        "createdAt": "2026-11-16T13:00:00.000Z",
+        "updatedAt": "2026-11-16T13:00:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Empty title or invalid duration format.
+  - `403 FORBIDDEN`: Non-owner trainer.
+  - `404 COURSE_NOT_FOUND`: Target course does not exist.
+  - `409 INVALID_STATUS_TRANSITION`: Cannot add lessons to an `ARCHIVED` course.
+
+---
+
+#### 7. PATCH /api/v1/lessons/:lessonId
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`.
+- **Description:** Looks up the parent course and updates lesson title, content, position, or estimated duration.
+- **Request Body (at least one field required):**
+  ```json
+  {
+    "title": "Module 1: Modern Digital Service Architecture",
+    "estimatedDurationMinutes": 30
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "lesson": {
+        "id": "11",
+        "courseId": "1",
+        "title": "Module 1: Modern Digital Service Architecture",
+        "content": "In this lesson we study architecture principles...",
+        "position": 2,
+        "estimatedDurationMinutes": 30,
+        "createdAt": "2026-11-16T13:00:00.000Z",
+        "updatedAt": "2026-11-16T13:30:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Empty body or invalid fields.
+  - `403 FORBIDDEN`: Non-owner trainer.
+  - `404 LESSON_NOT_FOUND`: Lesson does not exist.
+
+---
+
+#### 8. POST /api/v1/courses/:courseId/resources
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`.
+- **Description:** Attaches a study resource (file upload via `multipart/form-data` or external web URL). Enforces a 25 MiB size limit, strict MIME/extension allowlist, and filename sanitization. Raw storage paths are never saved or exposed in responses.
+- **Request (Multipart Form Data or JSON for links):**
+  - `title`: Required string, 1–200 characters.
+  - `description`: Optional string, max 2,000 characters.
+  - `resourceType`: Optional enum (`"DOCUMENT"`, `"PRESENTATION"`, `"VIDEO"`, `"LINK"`, `"OTHER"`).
+  - `lessonId`: Optional string ID to attach to a specific lesson, or null for course-wide.
+  - `file`: Binary file upload (max 25 MiB).
+  - `externalUrl`: Optional HTTP/HTTPS URL (if not uploading a file).
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "resource": {
+        "id": "101",
+        "courseId": "1",
+        "lessonId": "11",
+        "uploadedBy": "2",
+        "title": "Digital Transformation Roadmap Slides",
+        "description": "Lecture slide deck in PDF format.",
+        "resourceType": "PRESENTATION",
+        "externalUrl": null,
+        "hasFile": true,
+        "originalFilename": "transformation-roadmap.pdf",
+        "mimeType": "application/pdf",
+        "fileSizeBytes": 2458120,
+        "position": 1,
+        "createdAt": "2026-11-16T14:00:00.000Z",
+        "updatedAt": "2026-11-16T14:00:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 VALIDATION_ERROR`: Missing title or invalid external URL format.
+  - `403 FORBIDDEN`: Non-owner trainer.
+  - `404 COURSE_NOT_FOUND`: Target course does not exist.
+  - `413 FILE_TOO_LARGE`: Uploaded file exceeds 25 MiB size limit.
+  - `415 DISALLOWED_FILE_TYPE`: Blocked executable or script (`.exe`, `.sh`, `.bat`, `.js`, etc.).
+
+---
+
+#### 9. GET /api/v1/courses/:courseId/resources
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`, or Enrolled `TRAINEE` (`ACTIVE` or `COMPLETED`).
+- **Description:** Lists course learning resources. Raw storage directory paths are strictly omitted from the response DTO.
+- **Query Parameters:**
+  - `lessonId`: Optional string ID filter.
+  - `resourceType`: Optional enum filter.
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "resources": [
+        {
+          "id": "101",
+          "courseId": "1",
+          "lessonId": "11",
+          "uploadedBy": "2",
+          "title": "Digital Transformation Roadmap Slides",
+          "description": "Lecture slide deck in PDF format.",
+          "resourceType": "PRESENTATION",
+          "externalUrl": null,
+          "hasFile": true,
+          "originalFilename": "transformation-roadmap.pdf",
+          "mimeType": "application/pdf",
+          "fileSizeBytes": 2458120,
+          "position": 1,
+          "createdAt": "2026-11-16T14:00:00.000Z",
+          "updatedAt": "2026-11-16T14:00:00.000Z"
+        }
+      ]
+    }
+  }
+  ```
+- **Error Cases:**
+  - `401 UNAUTHENTICATED`: Missing token.
+  - `403 FORBIDDEN`: Unenrolled trainee or non-owner trainer.
+  - `404 COURSE_NOT_FOUND`: Course does not exist.
+
+---
+
+#### 10. GET /api/v1/courses/:courseId/resources/:resourceId/download
+- **Who can call:** Course Owner `TRAINER`, `ADMIN`, or Enrolled `TRAINEE` (`ACTIVE` or `COMPLETED`).
+- **Description:** Securely streams the stored file attachment as a download with sanitized `Content-Disposition` header. Verifies permissions before streaming.
+- **Response (200 OK):**
+  - Headers: `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="transformation-roadmap.pdf"`
+  - Body: Binary file stream.
+- **Error Cases:**
+  - `401 UNAUTHENTICATED`: Missing bearer token.
+  - `403 FORBIDDEN`: Unenrolled trainee.
+  - `404 RESOURCE_FILE_NOT_FOUND`: File or resource record not found.
+
+---
+
+#### 11. POST /api/v1/courses/:courseId/enrollments
+- **Who can call:** `TRAINEE` (`status === 'ACTIVE'`).
+- **Description:** Enrolls the logged-in trainee into a course. The target course must be in `PUBLISHED` status. Duplicate enrollments are caught and return `409 DUPLICATE_ENROLLMENT`.
+- **Request Body:** Empty `{}`.
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "enrollment": {
+        "id": "50",
+        "traineeId": "3",
+        "courseId": "1",
+        "status": "ACTIVE",
+        "enrolledAt": "2026-11-16T14:30:00.000Z",
+        "completedAt": null,
+        "cancelledAt": null,
+        "updatedAt": "2026-11-16T14:30:00.000Z"
+      }
+    }
+  }
+  ```
+- **Error Cases:**
+  - `401 UNAUTHENTICATED`: Missing token.
+  - `403 FORBIDDEN`: Calling user is `TRAINER` or `ADMIN`.
+  - `404 COURSE_NOT_FOUND`: Target course does not exist.
+  - `409 DUPLICATE_ENROLLMENT`: Trainee is already enrolled in this course.
+  - `409 COURSE_NOT_PUBLISHED`: Course is in `DRAFT` or `ARCHIVED` status.
+
+---
+
+#### 12. GET /api/v1/enrollments/me
+- **Who can call:** `TRAINEE` (`status === 'ACTIVE'`).
+- **Description:** Retrieves all course enrollments for the logged-in trainee. Dynamically calculates progress percentage (`completedLessons / totalLessons`). Courses with zero lessons return `0%` (not 100%).
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "enrollments": [
+        {
+          "id": "50",
+          "traineeId": "3",
+          "courseId": "1",
+          "status": "ACTIVE",
+          "enrolledAt": "2026-11-16T14:30:00.000Z",
+          "completedAt": null,
+          "cancelledAt": null,
+          "updatedAt": "2026-11-16T14:30:00.000Z",
+          "courseTitle": "Digital Governance and Public Administration",
+          "progressPercentage": 50,
+          "completedLessons": 1,
+          "totalLessons": 2,
+          "course": {
+            "id": "1",
+            "title": "Digital Governance and Public Administration",
+            "summary": "Foundational course on digital service delivery in government.",
+            "subject": "Public Administration",
+            "level": "BEGINNER",
+            "thumbnailUrl": "https://images.example.com/course-cover.png",
+            "status": "PUBLISHED"
+          }
+        }
+      ]
+    }
+  }
+  ```
+- **Error Cases:**
+  - `401 UNAUTHENTICATED`: Missing token.
+  - `403 FORBIDDEN`: Calling user is not a trainee.
+
+---
+
+#### 13. PATCH /api/v1/enrollments/:enrollmentId/progress
+- **Who can call:** Enrolled `TRAINEE` (`status === 'ACTIVE'`).
+- **Description:** Records lesson completion in `lesson_progress`. Verifies that the enrollment belongs to the authenticated trainee and the lesson belongs to the enrolled course. Repeat calls for the same lesson are idempotent. Triggers the course completion hook (all lessons completed + required published assessment passed -> marks enrollment `COMPLETED`).
+- **Request Body:**
+  ```json
+  {
+    "lessonId": "11"
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "enrollmentId": "50",
+      "courseId": "1",
+      "lessonId": "11",
+      "completed": true,
+      "progressPercentage": 100,
+      "completedLessons": 2,
+      "totalLessons": 2,
+      "isComplete": true,
+      "status": "COMPLETED"
+    }
+  }
+  ```
+- **Error Cases:**
+  - `400 LESSON_COURSE_MISMATCH`: Lesson does not belong to the enrolled course.
+  - `401 UNAUTHENTICATED`: Missing token.
+  - `403 FORBIDDEN`: Trainee does not own the enrollment.
+  - `404 ENROLLMENT_NOT_FOUND` / `LESSON_NOT_FOUND`: Target record does not exist.
+  - `409 ENROLLMENT_INACTIVE`: Enrollment is cancelled.
 
 ### 6.4 Assessments, Attempts, Results & Feedback (Owner: Member 3, PROPOSED)
 

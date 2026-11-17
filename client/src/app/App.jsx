@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import { useAuth } from '../features/auth/AuthContext.jsx';
@@ -9,23 +9,34 @@ import LoginPage from '../features/auth/LoginPage.jsx';
 import SignupPage from '../features/auth/SignupPage.jsx';
 import NotAuthorizedPage from '../features/auth/NotAuthorizedPage.jsx';
 import DashboardPage from '../features/auth/DashboardPage.jsx';
+import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
+import ProfilePage from '../features/profiles/ProfilePage.jsx';
 
-import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
+import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
 import AdminAnnouncementsPage from '../features/announcements/AdminAnnouncementsPage.jsx';
-import MyCertificatesPage from '../features/certificates/MyCertificatesPage.jsx';
-import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 import AdminSkillsPage from '../features/competency/AdminSkillsPage.jsx';
 import TraineeSkillsPage from '../features/competency/TraineeSkillsPage.jsx';
 import TrainerSkillsPage from '../features/competency/TrainerSkillsPage.jsx';
 import TrainerRecommendationsPage from '../features/competency/TrainerRecommendationsPage.jsx';
-import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
+import MyCertificatesPage from '../features/certificates/MyCertificatesPage.jsx';
+import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+
 import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
 import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
 import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
 import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
-import ProfilePage from '../features/profiles/ProfilePage.jsx';
-import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
-import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
+
+import CourseCataloguePage from '../features/courses/CourseCataloguePage.jsx';
+import CourseDetailPage from '../features/courses/CourseDetailPage.jsx';
+import MyLearningPage from '../features/courses/MyLearningPage.jsx';
+import LessonViewerPage from '../features/courses/LessonViewerPage.jsx';
+import TrainerCoursesPage from '../features/courses/TrainerCoursesPage.jsx';
+import CourseFormPage from '../features/courses/CourseFormPage.jsx';
+import ManageLessonsPage from '../features/courses/ManageLessonsPage.jsx';
+
+import '../features/courses/courses.css';
 
 function AuthenticatedHomePage() {
   return (
@@ -196,9 +207,9 @@ export default function App() {
 
   return (
     <>
-      {user && <Navbar />}
+      <Navbar />
       <Routes>
-        {/* Public routes */}
+        {/* Public auth routes (Member 1) */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/not-authorized" element={<NotAuthorizedPage />} />
@@ -211,6 +222,7 @@ export default function App() {
           }
         />
 
+        {/* Member 1: User & Admin Governance */}
         <Route
           path="/profile"
           element={
@@ -227,6 +239,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Member 4: Competency, Certificates, Announcements & Admin Dashboard */}
         <Route
           path="/admin/dashboard"
           element={
@@ -251,7 +265,6 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/skills"
           element={
@@ -284,8 +297,72 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
 
-        {/* Protected root - redirects to login if not signed in */}
+        {/* Member 2: Courses & Learning Resources */}
+        <Route path="/courses" element={<CourseCataloguePage />} />
+        <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+        <Route
+          path="/courses/:courseId/lessons/:lessonId"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
+              <LessonViewerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-learning"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
+              <MyLearningPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/courses"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <TrainerCoursesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/courses/new"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <CourseFormPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/courses/:courseId/edit"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <CourseFormPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/courses/:courseId/lessons"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
+              <ManageLessonsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Member 3: Assessments & Evaluations Routes */}
+        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
+        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
+        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
+        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
+        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
+
+        {/* Protected root */}
         <Route
           path="/"
           element={
@@ -295,18 +372,8 @@ export default function App() {
           }
         />
 
-        {/* Legacy foundation routes preserved (accessible without auth for now) */}
+        {/* Legacy foundation portal */}
         <Route path="/foundation" element={<FoundationHomePage />} />
-        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
-        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
-        <Route path="/courses/:courseId/assessments/manage" element={<TrainerAssessmentBuilder />} />
-        <Route path="/courses/:courseId/assessments/results" element={<TrainerCourseResultsView />} />
-        <Route path="/assessments/manage" element={<TrainerAssessmentBuilder />} />
-        <Route path="/assessments/results" element={<TrainerCourseResultsView />} />
-        <Route path="/courses/:courseId/assessments/:assessmentId/player" element={<QuizPlayer />} />
-        <Route path="/assessments/:assessmentId/player" element={<QuizPlayer />} />
-        <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
-        <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
       </Routes>
     </>
   );

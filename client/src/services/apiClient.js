@@ -13,8 +13,9 @@ export async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${normalizedPath}`;
 
   const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_STORAGE_KEY) : null;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers || {}),
   };
 
@@ -40,6 +41,7 @@ export async function apiRequest(endpoint, options = {}) {
     const error = new Error(payload?.error?.message || `Request failed with status ${response.status}`);
     error.code = payload?.error?.code || 'HTTP_ERROR';
     error.status = response.status;
+    error.data = payload?.data || null;
     throw error;
   }
 
