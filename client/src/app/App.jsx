@@ -1,11 +1,32 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
-import { AuthProvider } from '../features/auth/AuthContext.jsx';
-import RoleGuard from '../features/auth/RoleGuard.jsx';
-import Navbar from '../features/courses/Navbar.jsx';
 
-// Courses Pages (Member 2)
+import Navbar from '../components/Navbar.jsx';
+import ProtectedRoute from '../features/auth/ProtectedRoute.jsx';
+import LoginPage from '../features/auth/LoginPage.jsx';
+import SignupPage from '../features/auth/SignupPage.jsx';
+import NotAuthorizedPage from '../features/auth/NotAuthorizedPage.jsx';
+import DashboardPage from '../features/auth/DashboardPage.jsx';
+import ChangePasswordPage from '../features/auth/ChangePasswordPage.jsx';
+import ProfilePage from '../features/profiles/ProfilePage.jsx';
+
+import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
+import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
+import AdminAnnouncementsPage from '../features/announcements/AdminAnnouncementsPage.jsx';
+import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
+import AdminSkillsPage from '../features/competency/AdminSkillsPage.jsx';
+import TraineeSkillsPage from '../features/competency/TraineeSkillsPage.jsx';
+import TrainerSkillsPage from '../features/competency/TrainerSkillsPage.jsx';
+import TrainerRecommendationsPage from '../features/competency/TrainerRecommendationsPage.jsx';
+import MyCertificatesPage from '../features/certificates/MyCertificatesPage.jsx';
+import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
+
+import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
+import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
+import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
+import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
+
 import CourseCataloguePage from '../features/courses/CourseCataloguePage.jsx';
 import CourseDetailPage from '../features/courses/CourseDetailPage.jsx';
 import MyLearningPage from '../features/courses/MyLearningPage.jsx';
@@ -14,17 +35,18 @@ import TrainerCoursesPage from '../features/courses/TrainerCoursesPage.jsx';
 import CourseFormPage from '../features/courses/CourseFormPage.jsx';
 import ManageLessonsPage from '../features/courses/ManageLessonsPage.jsx';
 
-// Announcements & Certificates Pages (Member 4)
-import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
-import VerifyCertificatePage from '../features/certificates/VerifyCertificatePage.jsx';
-
-// Assessments & Feedback Pages (Member 3)
-import TrainerAssessmentBuilder from '../features/assessments/TrainerAssessmentBuilder.jsx';
-import TrainerCourseResultsView from '../features/assessments/TrainerCourseResultsView.jsx';
-import QuizPlayer from '../features/assessments/QuizPlayer.jsx';
-import CourseFeedbackForm from '../features/assessments/CourseFeedbackForm.jsx';
-
 import '../features/courses/courses.css';
+
+function AuthenticatedHomePage() {
+  return (
+    <>
+      <DashboardPage />
+      <div className="dashboard-announcements">
+        <AnnouncementsFeedSection />
+      </div>
+    </>
+  );
+}
 
 function FoundationHomePage() {
   const [healthState, setHealthState] = useState({
@@ -96,7 +118,7 @@ function FoundationHomePage() {
       </section>
 
       <section className="foundation-card" style={{ marginTop: '1.5rem' }}>
-        <h2>Member 3: Assessments & Evaluations Portal</h2>
+        <h2>Member 3: Assessments &amp; Evaluations Portal</h2>
         <p style={{ color: '#64748b', fontSize: '0.95rem' }}>
           Interactive interfaces for instructors to author MCQ assessments and analyze student evaluations.
         </p>
@@ -134,7 +156,7 @@ function FoundationHomePage() {
               fontSize: '0.9rem',
             }}
           >
-            📊 Course Results & Analytics
+            📊 Course Results &amp; Analytics
           </Link>
           <Link
             to="/courses/1/assessments/1/player"
@@ -169,7 +191,7 @@ function FoundationHomePage() {
               fontSize: '0.9rem',
             }}
           >
-            ⭐ Course Feedback & Ratings
+            ⭐ Course Feedback &amp; Ratings
           </Link>
         </div>
       </section>
@@ -181,66 +203,149 @@ function FoundationHomePage() {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <>
       <Navbar />
       <Routes>
-        {/* Redirect root to Course Catalogue */}
-        <Route path="/" element={<Navigate to="/courses" replace />} />
-        <Route path="/foundation" element={<FoundationHomePage />} />
+        {/* Public auth routes (Member 1) */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/not-authorized" element={<NotAuthorizedPage />} />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
 
-        {/* Public & Trainee Course Routes (Member 2) */}
+        {/* Member 1: User & Admin Governance */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER']}>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Member 4: Competency, Certificates, Announcements & Admin Dashboard */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/skills"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/announcements"
+          element={
+            <ProtectedRoute allowedRoles={['ADMIN']}>
+              <AdminAnnouncementsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/skills"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
+              <TraineeSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainer/skills"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINER']}>
+              <TrainerSkillsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trainers/recommendations"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
+              <TrainerRecommendationsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/certificates"
+          element={
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
+              <MyCertificatesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
+        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
+
+        {/* Member 2: Courses & Learning Resources */}
         <Route path="/courses" element={<CourseCataloguePage />} />
         <Route path="/courses/:courseId" element={<CourseDetailPage />} />
         <Route
           path="/courses/:courseId/lessons/:lessonId"
           element={
-            <RoleGuard allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
               <LessonViewerPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
-
-        {/* Trainee Learning Routes (Trainee only) */}
         <Route
           path="/my-learning"
           element={
-            <RoleGuard allowedRoles={['TRAINEE']}>
+            <ProtectedRoute allowedRoles={['TRAINEE']}>
               <MyLearningPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
-
-        {/* Trainer Course Management Routes (Trainer & Admin only) */}
         <Route
           path="/trainer/courses"
           element={
-            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
               <TrainerCoursesPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/trainer/courses/new"
           element={
-            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
               <CourseFormPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/trainer/courses/:courseId/edit"
           element={
-            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
               <CourseFormPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/trainer/courses/:courseId/lessons"
           element={
-            <RoleGuard allowedRoles={['TRAINER', 'ADMIN']}>
+            <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
               <ManageLessonsPage />
-            </RoleGuard>
+            </ProtectedRoute>
           }
         />
 
@@ -254,13 +359,19 @@ export default function App() {
         <Route path="/courses/:courseId/feedback" element={<CourseFeedbackForm />} />
         <Route path="/feedback/:courseId" element={<CourseFeedbackForm />} />
 
-        {/* Member 4: Certificate Verification Routes */}
-        <Route path="/certificates/verify" element={<VerifyCertificatePage />} />
-        <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
+        {/* Protected root */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AuthenticatedHomePage />
+            </ProtectedRoute>
+          }
+        />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/courses" replace />} />
+        {/* Legacy foundation portal */}
+        <Route path="/foundation" element={<FoundationHomePage />} />
       </Routes>
-    </AuthProvider>
+    </>
   );
 }

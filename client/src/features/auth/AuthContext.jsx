@@ -1,66 +1,104 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { apiRequest } from '../../services/apiClient.js';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { apiRequest, TOKEN_STORAGE_KEY } from '../../services/apiClient.js';
 
-/**
- * Temporary Member 1 Auth Context Stub
- * Will be swapped with Member 1's full auth module when merged.
- * Calls real GET /api/v1/auth/me and provides login/logout methods.
- */
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
-
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await apiRequest('/auth/me', { method: 'GET' });
-      setUser(res.data?.user || null);
-      setAuthError(null);
-    } catch (err) {
-      // 401 is normal for unauthenticated guests
-      if (err.status !== 401) {
-        setAuthError(err.message);
-      }
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
-    fetchCurrentUser();
-  }, [fetchCurrentUser]);
+    let isMounted = true;
 
-  const login = async (email, password) => {
-    const res = await apiRequest('/auth/login', {
+    async function restoreSession() {
+      const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_STORAGE_KEY) : null;
+      if (!token) {
+        if (isMounted) {
+          setUser(null);
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const payload = await apiRequest('/auth/me', { method: 'GET' });
+        if (isMounted) {
+          setUser(payload.data?.user || null);
+        }
+      } catch {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        }
+        if (isMounted) {
+          setUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    restoreSession();
+
+    function handleUnauthorized() {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      }
+      if (isMounted) {
+        setUser(null);
+      }
+    }
+
+    window.addEventListener('capsera:unauthorized', handleUnauthorized);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('capsera:unauthorized', handleUnauthorized);
+    };
+  }, []);
+
+  const login = useCallback(async (email, password) => {
+    const payload = await apiRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    setUser(res.data?.user || null);
-    return res.data?.user;
-  };
 
-  const logout = async () => {
+    if (payload?.data?.token) {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, payload.data.token);
+    }
+    if (payload?.data?.user) {
+      setUser(payload.data.user);
+    }
+    return payload?.data;
+  }, []);
+
+  const signup = useCallback(async ({ fullName, email, password, role }) => {
+    const payload = await apiRequest('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ fullName, email, password, role }),
+    });
+    return payload?.data;
+  }, []);
+
+  const logout = useCallback(async () => {
     try {
       await apiRequest('/auth/logout', { method: 'POST' });
+    } catch {
+      // Discard client session even if API call fails
     } finally {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      }
       setUser(null);
     }
-  };
+  }, []);
 
   const value = {
     user,
     loading,
-    authError,
-    isAuthenticated: Boolean(user),
-    isTrainee: user?.role === 'TRAINEE',
-    isTrainer: user?.role === 'TRAINER',
-    isAdmin: user?.role === 'ADMIN',
-    refetchUser: fetchCurrentUser,
     login,
+    signup,
     logout,
   };
 
@@ -74,3 +112,5 @@ export function useAuth() {
   }
   return context;
 }
+
+export default AuthContext;
