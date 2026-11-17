@@ -79,12 +79,13 @@ describe.runIf(runPgIntegration)(
         // 1. Delete audit logs associated with certificates for test courses/trainees
         await executeQuery(
           `DELETE FROM audit_logs
-           WHERE target_entity = 'certificates'
-             AND target_id IN (
-               SELECT id FROM certificates
-               WHERE course_id = ANY($1::bigint[])
-                  OR trainee_id = ANY($2::bigint[])
-             )`,
+           WHERE (target_entity = 'certificates'
+                  AND target_id IN (
+                    SELECT id FROM certificates
+                    WHERE course_id = ANY($1::bigint[])
+                       OR trainee_id = ANY($2::bigint[])
+                  ))
+              OR actor_user_id = ANY($2::bigint[])`,
           [createdCourseIds, createdUserIds],
         );
 
@@ -96,7 +97,45 @@ describe.runIf(runPgIntegration)(
           [createdCourseIds, createdUserIds],
         );
 
-        // 3. Delete lesson progress
+        // 3. Delete assessment attempt answers, attempts, questions and assessments
+        await executeQuery(
+          `DELETE FROM attempt_answers
+           WHERE attempt_id IN (
+             SELECT id FROM assessment_attempts
+             WHERE trainee_id = ANY($2::bigint[])
+                OR assessment_id IN (SELECT id FROM assessments WHERE course_id = ANY($1::bigint[]))
+           )`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM assessment_attempts
+           WHERE trainee_id = ANY($2::bigint[])
+              OR assessment_id IN (SELECT id FROM assessments WHERE course_id = ANY($1::bigint[]))`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM questions
+           WHERE assessment_id IN (SELECT id FROM assessments WHERE course_id = ANY($1::bigint[]))`,
+          [createdCourseIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM assessments
+           WHERE course_id = ANY($1::bigint[])`,
+          [createdCourseIds],
+        );
+
+        // 4. Delete course feedback
+        await executeQuery(
+          `DELETE FROM feedback
+           WHERE course_id = ANY($1::bigint[])
+              OR trainee_id = ANY($2::bigint[])`,
+          [createdCourseIds, createdUserIds],
+        );
+
+        // 5. Delete lesson progress
         await executeQuery(
           `DELETE FROM lesson_progress
            WHERE course_id = ANY($1::bigint[])
@@ -108,7 +147,7 @@ describe.runIf(runPgIntegration)(
           [createdCourseIds, createdUserIds],
         );
 
-        // 4. Delete enrollments
+        // 6. Delete enrollments
         await executeQuery(
           `DELETE FROM enrollments
            WHERE course_id = ANY($1::bigint[])
@@ -116,21 +155,28 @@ describe.runIf(runPgIntegration)(
           [createdCourseIds, createdUserIds],
         );
 
-        // 5. Delete learning resources if any
+        // 7. Delete course announcements
+        await executeQuery(
+          `DELETE FROM course_announcements
+           WHERE course_id = ANY($1::bigint[])`,
+          [createdCourseIds],
+        );
+
+        // 8. Delete learning resources if any
         await executeQuery(
           `DELETE FROM learning_resources
            WHERE course_id = ANY($1::bigint[])`,
           [createdCourseIds],
         );
 
-        // 6. Delete lessons
+        // 9. Delete lessons
         await executeQuery(
           `DELETE FROM lessons
            WHERE course_id = ANY($1::bigint[])`,
           [createdCourseIds],
         );
 
-        // 7. Delete courses
+        // 10. Delete courses
         await executeQuery(
           `DELETE FROM courses
            WHERE id = ANY($1::bigint[])
@@ -138,7 +184,26 @@ describe.runIf(runPgIntegration)(
           [createdCourseIds, createdUserIds],
         );
 
-        // 8. Delete users
+        // 11. Delete user profiles and skill mappings
+        await executeQuery(
+          `DELETE FROM trainee_profiles
+           WHERE user_id = ANY($1::bigint[])`,
+          [createdUserIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM trainer_profiles
+           WHERE user_id = ANY($1::bigint[])`,
+          [createdUserIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM user_skills
+           WHERE user_id = ANY($1::bigint[])`,
+          [createdUserIds],
+        );
+
+        // 12. Delete users
         await executeQuery(
           `DELETE FROM users
            WHERE id = ANY($1::bigint[])`,
