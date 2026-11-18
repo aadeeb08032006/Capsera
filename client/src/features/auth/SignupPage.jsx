@@ -20,6 +20,7 @@ export default function SignupPage() {
     fullName: '',
     email: '',
     password: '',
+    confirmPassword: '',
     role: 'TRAINEE',
   });
   const [fieldErrors, setFieldErrors] = useState({});
@@ -41,6 +42,11 @@ export default function SignupPage() {
     if (!form.email.trim()) errors.email = 'Email is required.';
     const pwErr = validatePassword(form.password);
     if (pwErr) errors.password = pwErr;
+    if (!form.confirmPassword) {
+      errors.confirmPassword = 'Please confirm your password.';
+    } else if (form.password !== form.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match.';
+    }
     if (!['TRAINEE', 'TRAINER'].includes(form.role)) errors.role = 'Please select a valid role.';
     return errors;
   }
@@ -65,7 +71,7 @@ export default function SignupPage() {
       });
 
       // Clear password from state immediately after submission
-      setForm((prev) => ({ ...prev, password: '' }));
+      setForm((prev) => ({ ...prev, password: '', confirmPassword: '' }));
       setSuccess(true);
     } catch (err) {
       const code = err.code || '';
@@ -191,6 +197,30 @@ export default function SignupPage() {
             ) : (
               <span id="password-hint" className="auth-field-hint">
                 At least 8 characters with a letter and a number.
+              </span>
+            )}
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="confirmPassword" className="auth-label">
+              Confirm Password
+            </label>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              className={`auth-input${fieldErrors.confirmPassword ? ' auth-input--error' : ''}`}
+              value={form.confirmPassword}
+              onChange={handleChange}
+              autoComplete="new-password"
+              disabled={submitting}
+              aria-describedby={fieldErrors.confirmPassword ? 'confirmPassword-error' : undefined}
+              aria-invalid={!!fieldErrors.confirmPassword}
+              maxLength={72}
+            />
+            {fieldErrors.confirmPassword && (
+              <span id="confirmPassword-error" className="auth-field-error" role="alert">
+                {fieldErrors.confirmPassword}
               </span>
             )}
           </div>
