@@ -155,11 +155,11 @@ describe.runIf(runPgIntegration)(
           [createdCourseIds, createdUserIds],
         );
 
-        // 7. Delete course announcements
+        // 7. Delete announcements created by test users if any
         await executeQuery(
-          `DELETE FROM course_announcements
-           WHERE course_id = ANY($1::bigint[])`,
-          [createdCourseIds],
+          `DELETE FROM announcements
+           WHERE creator_id = ANY($1::bigint[])`,
+          [createdUserIds],
         );
 
         // 8. Delete learning resources if any
@@ -198,8 +198,14 @@ describe.runIf(runPgIntegration)(
         );
 
         await executeQuery(
-          `DELETE FROM user_skills
-           WHERE user_id = ANY($1::bigint[])`,
+          `DELETE FROM trainee_skills
+           WHERE trainee_id = ANY($1::bigint[])`,
+          [createdUserIds],
+        );
+
+        await executeQuery(
+          `DELETE FROM trainer_skills
+           WHERE trainer_id = ANY($1::bigint[])`,
           [createdUserIds],
         );
 
