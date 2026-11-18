@@ -1,4 +1,5 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
+import AdminLayout, { DashboardIcon } from '../admin/AdminLayout.jsx';
 import { createSkill, listSkills } from './competencyApi.js';
 import './competency.css';
 
@@ -84,6 +85,16 @@ export default function AdminSkillsPage() {
     };
   }, [activeCategory, page, refreshTick]);
 
+  const visibleCategories = useMemo(() => {
+    const unique = new Set();
+    for (const item of items) {
+      if (typeof item.category === 'string' && item.category.trim()) {
+        unique.add(item.category.trim());
+      }
+    }
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
   function validateCreateForm() {
     const errors = {};
     const trimmedName = name.trim();
@@ -159,25 +170,44 @@ export default function AdminSkillsPage() {
     setActiveCategory('');
   }
 
+  function handleSelectCategoryChip(cat) {
+    setFilterInput(cat);
+    setPage(1);
+    setActiveCategory(cat);
+  }
+
   const totalPages = pagination.totalPages ?? 0;
   const totalItems = pagination.totalItems ?? 0;
 
   return (
-    <main className="competency-page">
-      <header className="competency-page-header">
-        <h1>Skill Catalogue Administration</h1>
-        <p className="competency-subtitle">
-          Manage the canonical skill catalogue used by trainees, trainers, and recommendations.
-        </p>
-      </header>
-
+    <AdminLayout
+      title="Skill Catalogue Administration"
+      eyebrow="Competency Framework"
+      subtitle="Manage the canonical skill catalogue used by trainees, trainers, and recommendations."
+      headerActions={
+        <button
+          type="button"
+          className="admin-dashboard-btn admin-dashboard-btn-primary"
+          onClick={() => setRefreshTick((tick) => tick + 1)}
+          disabled={isLoading}
+        >
+          <DashboardIcon name="refresh" />
+          <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
+        </button>
+      }
+    >
       <section className="competency-card" aria-labelledby="create-skill-heading">
-        <h2 id="create-skill-heading" className="competency-title">
-          Add Canonical Skill
-        </h2>
-        <p className="competency-subtitle">
-          Skill names are trimmed and enforced as unique regardless of letter case.
-        </p>
+        <div className="competency-card-header competency-card-header--bordered">
+          <div>
+            <h2 id="create-skill-heading" className="competency-title">
+              Add Canonical Skill
+            </h2>
+            <p className="competency-subtitle">
+              Skill names are trimmed and enforced as unique regardless of letter case.
+            </p>
+          </div>
+          <span className="competency-meta-pill">Unique Case-Insensitive</span>
+        </div>
 
         {createError && (
           <div className="competency-banner competency-banner-error" role="alert">
@@ -258,7 +288,7 @@ export default function AdminSkillsPage() {
       </section>
 
       <section className="competency-card" aria-labelledby="catalogue-heading">
-        <div className="competency-card-header">
+        <div className="competency-card-header competency-card-header--bordered">
           <div>
             <h2 id="catalogue-heading" className="competency-title">
               Canonical Skills ({totalItems})
@@ -267,6 +297,11 @@ export default function AdminSkillsPage() {
               Sorted alphabetically. Category filter uses exact case-sensitive matching.
             </p>
           </div>
+          {activeCategory && (
+            <span className="competency-active-filter-badge">
+              Category: <strong>{activeCategory}</strong>
+            </span>
+          )}
         </div>
 
         <form className="competency-filter-bar" onSubmit={handleFilterSubmit} noValidate>
@@ -299,6 +334,32 @@ export default function AdminSkillsPage() {
             )}
           </div>
         </form>
+
+        {(visibleCategories.length > 0 || activeCategory) && (
+          <div className="competency-category-chips" aria-label="Quick category filter">
+            <button
+              type="button"
+              className={`competency-category-chip ${
+                !activeCategory ? 'competency-category-chip--active' : ''
+              }`.trim()}
+              onClick={handleClearFilter}
+            >
+              All Categories
+            </button>
+            {visibleCategories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                className={`competency-category-chip ${
+                  activeCategory === cat ? 'competency-category-chip--active' : ''
+                }`.trim()}
+                onClick={() => handleSelectCategoryChip(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
 
         {isLoading && (
           <div className="competency-banner competency-banner-info" role="status">
@@ -347,9 +408,11 @@ export default function AdminSkillsPage() {
                         {skill.name}
                       </td>
                       <td data-label="Category" className="competency-cell-category">
-                        {skill.category}
+                        <span className="competency-category-badge">{skill.category}</span>
                       </td>
-                      <td data-label="Created">{formatDate(skill.createdAt)}</td>
+                      <td data-label="Created" className="competency-cell-date">
+                        {formatDate(skill.createdAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -380,6 +443,6 @@ export default function AdminSkillsPage() {
           </>
         )}
       </section>
-    </main>
+    </AdminLayout>
   );
 }

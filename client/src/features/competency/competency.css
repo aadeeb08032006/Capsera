@@ -1,53 +1,91 @@
+/* ─── CAPSERA Competency & Skill Catalogue — Blue (#365CF5) + Lime (#CBF36B) Design System ─── */
+
 .competency-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
-  padding: 1.5rem;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 1.25rem 1.35rem;
 }
 
 .competency-card-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.competency-card-header--bordered {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .competency-title {
-  margin: 0 0 0.25rem;
-  font-size: 1.25rem;
-  color: #0f172a;
+  margin: 0 0 0.15rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #18202f;
 }
 
 .competency-subtitle {
   margin: 0;
-  font-size: 0.925rem;
-  color: #475569;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.competency-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background-color: #f7f8fc;
+  color: #64748b;
+  border: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.competency-active-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background-color: #cbf36b;
+  color: #18202f;
+  white-space: nowrap;
 }
 
 .competency-badge-unsaved {
   flex-shrink: 0;
-  padding: 0.25rem 0.65rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   border-radius: 999px;
-  background-color: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background-color: #cbf36b;
+  color: #18202f;
+  border: 1px solid #cbf36b;
 }
 
 .competency-banner {
-  margin-bottom: 1rem;
+  margin-bottom: 0.9rem;
   padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.9rem;
+  border-radius: 0.55rem;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .competency-banner-info {
-  background-color: #f1f5f9;
-  color: #334155;
-  border: 1px solid #cbd5e1;
+  background-color: #f7f8fc;
+  color: #18202f;
+  border: 1px solid #e5e7eb;
 }
 
 .competency-banner-error {
@@ -56,16 +94,22 @@
   border: 1px solid #fecaca;
 }
 
+.competency-banner-success {
+  background-color: #f3fcd9;
+  color: #18202f;
+  border: 1px solid #cbf36b;
+}
+
 .competency-add-form {
   display: grid;
   grid-template-columns: minmax(200px, 2fr) minmax(160px, 1fr) auto;
   gap: 0.75rem;
   align-items: end;
-  padding: 1rem;
+  padding: 0.95rem 1.05rem;
   margin-bottom: 1rem;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
+  background-color: #f7f8fc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
 }
 
 .competency-add-form:has(.competency-years-field) {
@@ -75,37 +119,40 @@
 .competency-field {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .competency-label {
-  font-size: 0.825rem;
-  font-weight: 600;
-  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #18202f;
 }
 
 .competency-select,
 .competency-input {
   width: 100%;
-  min-height: 2.35rem;
-  padding: 0.4rem 0.65rem;
-  font-size: 0.925rem;
-  color: #0f172a;
+  min-height: 2.3rem;
+  padding: 0.42rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.86rem;
+  color: #18202f;
   background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.45rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  transition: border-color 0.14s ease;
 }
 
 .competency-select:focus-visible,
 .competency-input:focus-visible,
 .competency-btn:focus-visible {
-  outline: 2px solid #0369a1;
+  outline: 2px solid #365cf5;
   outline-offset: 2px;
+  border-color: #365cf5;
 }
 
 .competency-select:disabled,
 .competency-input:disabled {
-  background-color: #f1f5f9;
+  background-color: #f7f8fc;
   color: #64748b;
   cursor: not-allowed;
 }
@@ -115,60 +162,82 @@
 }
 
 .competency-field-error {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
+  margin: 0.18rem 0 0;
+  font-size: 0.76rem;
+  font-weight: 600;
   color: #b91c1c;
 }
 
 .competency-empty-state {
   padding: 1.5rem 1rem;
   text-align: center;
-  color: #475569;
-  background-color: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 0.5rem;
+  color: #64748b;
+  font-size: 0.86rem;
+  background-color: #f7f8fc;
+  border: 1px dashed #e5e7eb;
+  border-radius: 0.6rem;
 }
 
 .competency-table-wrap {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
 }
 
 .competency-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.925rem;
+  font-size: 0.84rem;
 }
 
 .competency-table th,
 .competency-table td {
-  padding: 0.75rem 0.85rem;
+  padding: 0.68rem 0.9rem;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: top;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle;
 }
 
 .competency-table th {
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #475569;
-  background-color: #f8fafc;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  background-color: #f7f8fc;
 }
 
 .competency-table tbody tr:last-child td {
   border-bottom: none;
 }
 
+.competency-table tbody tr:hover {
+  background-color: #f7f8fc;
+}
+
 .competency-cell-skill {
-  font-weight: 600;
-  color: #0f172a;
+  font-weight: 700;
+  color: #18202f;
 }
 
 .competency-cell-category {
-  color: #475569;
+  color: #64748b;
+}
+
+.competency-category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.58rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background-color: #eef2ff;
+  color: #365cf5;
+}
+
+.competency-cell-date {
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
 }
 
 .competency-col-actions {
@@ -178,43 +247,48 @@
 
 .competency-confirm-box {
   margin-top: 1rem;
-  padding: 1rem;
-  background-color: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: 0.5rem;
+  padding: 0.95rem 1.05rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.55rem;
 }
 
 .competency-confirm-text {
-  margin: 0 0 0.75rem;
-  font-size: 0.9rem;
-  color: #78350f;
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #991b1b;
 }
 
 .competency-confirm-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .competency-card-footer {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e2e8f0;
+  margin-top: 1.15rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid #e5e7eb;
 }
 
 .competency-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.35rem;
-  padding: 0.45rem 0.95rem;
-  font-size: 0.9rem;
+  gap: 0.38rem;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.9rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
   font-weight: 600;
-  border-radius: 0.45rem;
+  border-radius: 0.5rem;
   border: 1px solid transparent;
+  text-decoration: none;
   cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
 }
 
 .competency-btn:disabled {
@@ -223,22 +297,23 @@
 }
 
 .competency-btn-primary {
-  background-color: #0369a1;
+  background-color: #365cf5;
   color: #ffffff;
 }
 
 .competency-btn-primary:hover:not(:disabled) {
-  background-color: #075985;
+  background-color: #294ce0;
 }
 
 .competency-btn-secondary {
   background-color: #ffffff;
-  color: #0f172a;
-  border-color: #cbd5e1;
+  color: #18202f;
+  border-color: #e5e7eb;
 }
 
 .competency-btn-secondary:hover:not(:disabled) {
-  background-color: #f1f5f9;
+  background-color: #f7f8fc;
+  border-color: #cbd5e1;
 }
 
 .competency-btn-danger {
@@ -253,7 +328,7 @@
 .competency-btn-danger-outline {
   background-color: #ffffff;
   color: #b91c1c;
-  border-color: #fca5a5;
+  border-color: #fecaca;
 }
 
 .competency-btn-danger-outline:hover:not(:disabled) {
@@ -261,24 +336,20 @@
 }
 
 .competency-page {
-  max-width: 960px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 2rem 1.25rem;
+  padding: 1.5rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.15rem;
 }
 
 .competency-page-header h1 {
-  margin: 0 0 0.35rem;
-  font-size: 1.75rem;
-  color: #0f172a;
-}
-
-.competency-banner-success {
-  background-color: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #18202f;
 }
 
 .competency-banner-actions {
@@ -293,13 +364,16 @@
 .competency-create-form {
   display: grid;
   grid-template-columns: minmax(180px, 1.4fr) minmax(160px, 1fr) auto;
-  gap: 0.75rem;
+  gap: 0.85rem;
   align-items: start;
-  margin-top: 1rem;
+  padding: 0.95rem 1.05rem;
+  background-color: #f7f8fc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
 }
 
 .competency-create-form .competency-add-action {
-  padding-top: 1.45rem;
+  padding-top: 1.42rem;
 }
 
 .competency-filter-bar {
@@ -307,7 +381,7 @@
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: end;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
 }
 
 .competency-filter-input {
@@ -319,6 +393,43 @@
   gap: 0.5rem;
 }
 
+.competency-category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.competency-category-chip {
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background-color: #f7f8fc;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.competency-category-chip:hover {
+  border-color: #365cf5;
+  color: #365cf5;
+}
+
+.competency-category-chip--active {
+  background-color: #1b2030;
+  border-color: #1b2030;
+  color: #cbf36b;
+  font-weight: 700;
+}
+
+.competency-category-chip--active:hover {
+  border-color: #1b2030;
+  color: #cbf36b;
+}
+
 .competency-pagination {
   display: flex;
   flex-wrap: wrap;
@@ -326,13 +437,15 @@
   justify-content: space-between;
   gap: 0.75rem;
   margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #e2e8f0;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e5e7eb;
 }
 
 .competency-pagination-info {
-  font-size: 0.9rem;
-  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
 }
 
 .competency-recommendation-controls {
@@ -347,8 +460,9 @@
 }
 
 .competency-empty-title {
-  margin: 0 0 0.4rem;
-  color: #0f172a;
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  color: #18202f;
 }
 
 .competency-empty-actions {
@@ -356,12 +470,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.6rem;
 }
 
 .competency-empty-note {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: #64748b;
 }
 
@@ -371,17 +485,17 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .competency-recommendation-card {
-  padding: 1.15rem 1.25rem;
+  padding: 1.1rem 1.2rem;
   background-color: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 0.65rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.8rem;
 }
 
 .competency-recommendation-top {
@@ -402,37 +516,37 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.1rem;
-  height: 2.1rem;
+  min-width: 2rem;
+  height: 2rem;
   padding: 0 0.45rem;
   border-radius: 999px;
-  background-color: #e0f2fe;
-  color: #0369a1;
-  font-size: 0.825rem;
-  font-weight: 700;
+  background-color: #1b2030;
+  color: #cbf36b;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .competency-recommendation-name {
   margin: 0;
-  font-size: 1.075rem;
-  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #18202f;
 }
 
 .competency-recommendation-meta {
-  margin: 0.2rem 0 0;
-  font-size: 0.875rem;
-  color: #475569;
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
 }
 
 .competency-recommendation-skill-pill {
   flex-shrink: 0;
-  padding: 0.25rem 0.65rem;
+  padding: 0.2rem 0.65rem;
   border-radius: 999px;
-  background-color: #f1f5f9;
-  color: #334155;
-  border: 1px solid #cbd5e1;
-  font-size: 0.775rem;
-  font-weight: 600;
+  background-color: #cbf36b;
+  color: #18202f;
+  font-size: 0.73rem;
+  font-weight: 700;
 }
 
 .competency-recommendation-metrics {
@@ -440,10 +554,10 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
-  padding: 0.75rem 0.9rem;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  background-color: #f7f8fc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.55rem;
 }
 
 .competency-recommendation-metric {
@@ -451,33 +565,33 @@
 }
 
 .competency-recommendation-metric dt {
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   color: #64748b;
 }
 
 .competency-recommendation-metric dd {
-  margin: 0.2rem 0 0;
-  font-size: 0.925rem;
-  font-weight: 600;
-  color: #0f172a;
+  margin: 0.18rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #18202f;
 }
 
 .competency-recommendation-explanation {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  background-color: #f8fafc;
-  border-left: 3px solid #0369a1;
-  border-radius: 0.35rem;
-  font-size: 0.9rem;
-  color: #334155;
+  background-color: #f7f8fc;
+  border-left: 3px solid #365cf5;
+  border-radius: 0.4rem;
+  font-size: 0.84rem;
+  color: #18202f;
 }
 
 @media (max-width: 640px) {
   .competency-page {
-    padding: 1.25rem 0.85rem;
+    padding: 1rem 0.85rem;
   }
 
   .competency-card {
@@ -512,22 +626,22 @@
 
   .competency-table tr {
     padding: 0.75rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e5e7eb;
   }
 
   .competency-table td {
-    padding: 0.35rem 0;
+    padding: 0.3rem 0;
     border-bottom: none;
   }
 
   .competency-table td::before {
     content: attr(data-label);
     display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 700;
     text-transform: uppercase;
     color: #64748b;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.18rem;
   }
 
   .competency-card-footer .competency-btn {

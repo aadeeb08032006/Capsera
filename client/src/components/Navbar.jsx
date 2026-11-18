@@ -1,12 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext.jsx';
+import { isAdminPortalRoute } from '../features/admin/AdminLayout.jsx';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (user?.role === 'ADMIN' && location.pathname === '/admin/dashboard') {
+  if (user?.role === 'ADMIN' && isAdminPortalRoute(location.pathname)) {
     return null;
   }
 

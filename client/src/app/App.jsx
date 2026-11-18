@@ -14,6 +14,7 @@ import ProfilePage from '../features/profiles/ProfilePage.jsx';
 
 import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
 import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
+import AdminLayout from '../features/admin/AdminLayout.jsx';
 import AdminAnnouncementsPage from '../features/announcements/AdminAnnouncementsPage.jsx';
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 import AdminSkillsPage from '../features/competency/AdminSkillsPage.jsx';
@@ -235,7 +236,9 @@ export default function App() {
           path="/admin/users"
           element={
             <ProtectedRoute allowedRoles={['ADMIN']}>
-              <AdminUsersPage />
+              <AdminLayout embeddedPage sectionLabel="User Management">
+                <AdminUsersPage />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
@@ -285,7 +288,9 @@ export default function App() {
           path="/trainers/recommendations"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <TrainerRecommendationsPage coursesPath="/courses" />
+              <AdminLayout embeddedPage sectionLabel="Trainer Recommendations">
+                <TrainerRecommendationsPage coursesPath="/courses" />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
@@ -323,7 +328,9 @@ export default function App() {
           path="/trainer/courses"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <TrainerCoursesPage />
+              <AdminLayout embeddedPage sectionLabel="Course Management">
+                <TrainerCoursesPage />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
@@ -331,7 +338,9 @@ export default function App() {
           path="/trainer/courses/new"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <CourseFormPage />
+              <AdminLayout embeddedPage sectionLabel="Create Course">
+                <CourseFormPage />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
@@ -339,7 +348,9 @@ export default function App() {
           path="/trainer/courses/:courseId/edit"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <CourseFormPage />
+              <AdminLayout embeddedPage sectionLabel="Edit Course">
+                <CourseFormPage />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
@@ -347,7 +358,9 @@ export default function App() {
           path="/trainer/courses/:courseId/lessons"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <ManageLessonsPage />
+              <AdminLayout embeddedPage sectionLabel="Manage Lessons">
+                <ManageLessonsPage />
+              </AdminLayout>
             </ProtectedRoute>
           }
         />
