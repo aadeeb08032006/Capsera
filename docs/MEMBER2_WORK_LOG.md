@@ -207,3 +207,24 @@
   - Maintained zero-regression across all existing member test suites.
   - Database integrity is enforced at the PostgreSQL schema layer via composite foreign keys and multi-state timestamp check constraints.
 - Needs from teammates: None. All Member 2 tasks, endpoints, frontend views, schemas, and tests are complete.
+
+### Phase 7: Code Review Integration & Refinements (2026-11-18)
+- Status: Done
+- What was built / resolved:
+  - Item 1 (CourseDetailPage Auth Flags): Verified and aligned `CourseDetailPage.jsx` with canonical `useAuth()`. Auth flags (`isAuthenticated`, `isTrainee`, `isTrainer`, `isAdmin`) are derived directly from `user` state (`user?.role`), preventing runtime breakage for trainee enrollment and trainer course management controls.
+  - Item 2 (Lesson Completion Banner vs Required Assessments): Updated `client/src/features/courses/LessonViewerPage.jsx` to decouple lesson completion from overall course completion. When `res.progressPercentage === 100 && !res.isComplete`, the viewer displays an assessment pending banner ("All Lessons Completed! To complete this course and earn your certificate, please complete the required course assessment(s)") with direct navigation to course assessments, rather than prematurely declaring the entire course completed.
+  - Item 3 (PostgreSQL Test Teardown Dependency Order): Hardened `cleanupTestRecords()` in `server/tests/learningFlow.integration.test.js` to follow strict reverse topological foreign key order across the complete database schema: `audit_logs` -> `certificates` -> `attempt_answers` -> `assessment_attempts` -> `questions` -> `assessments` -> `feedback` -> `lesson_progress` -> `enrollments` -> `course_announcements` -> `learning_resources` -> `lessons` -> `courses` -> `trainee_profiles` -> `trainer_profiles` -> `user_skills` -> `users`. Prevents PostgreSQL RESTRICT foreign key constraint violations during real database test execution.
+  - Item 4 (Course-to-Assessment Navigation Coordination): Integrated Member 3's assessments and feedback navigation directly into `LessonViewerPage.jsx` curriculum sidebar, providing direct links to `/courses/:courseId/assessments/:assessmentId/player` and `/courses/:courseId/feedback`.
+- Files created or changed:
+  - `client/src/features/courses/LessonViewerPage.jsx`
+  - `server/tests/learningFlow.integration.test.js`
+  - `docs/MEMBER2_WORK_LOG.md`
+- How to test it:
+  - Build frontend: `npm run build:client` (builds cleanly with 0 errors in ~400ms).
+  - Run full test suite: `npm test --prefix server` (376 passed, 22 skipped, 0 failed).
+- Tests added / updated:
+  - `server/tests/learningFlow.integration.test.js`: Verified strict multi-table teardown against schema constraints.
+- Issues, assumptions, or decisions:
+  - Preserved backward compatibility with Member 1 canonical auth context and Member 3 assessment models.
+  - Token storage aligned with `capsera_token`.
+- Needs from teammates: None. All 4 review items for Member 2 are fully resolved.
