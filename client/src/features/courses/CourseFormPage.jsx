@@ -7,6 +7,7 @@ import {
   publishCourse,
   archiveCourse,
 } from './coursesApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export const SUBJECT_OPTIONS = [
   'General',
@@ -254,9 +255,10 @@ export default function CourseFormPage() {
                 to={`/courses/${courseId}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-secondary"
+                className="btn btn-secondary ui-inline"
               >
-                Preview Public Page ↗
+                Preview Public Page
+                <UiIcon name="external-link" size={14} />
               </Link>
             </div>
           )}
@@ -266,7 +268,9 @@ export default function CourseFormPage() {
       {/* Notifications */}
       {error && (
         <div className="form-alert alert-error" role="alert">
-          <span className="alert-icon" aria-hidden="true">⚠️</span>
+          <span className="alert-icon" aria-hidden="true">
+            <UiIcon name="alert-triangle" size={18} />
+          </span>
           <div className="alert-body">
             <strong>Error:</strong> {error}
           </div>
@@ -275,7 +279,9 @@ export default function CourseFormPage() {
 
       {successMsg && (
         <div className="form-alert alert-success" role="status">
-          <span className="alert-icon" aria-hidden="true">✓</span>
+          <span className="alert-icon" aria-hidden="true">
+            <UiIcon name="check-circle" size={18} />
+          </span>
           <div className="alert-body">{successMsg}</div>
         </div>
       )}
@@ -448,7 +454,7 @@ export default function CourseFormPage() {
                   onClick={handlePublish}
                   title="Make this course live for trainees in the catalogue"
                 >
-                  {publishing ? 'Publishing...' : '🚀 Publish Course'}
+                  {publishing ? 'Publishing...' : 'Publish Course'}
                 </button>
               )}
 
@@ -456,12 +462,13 @@ export default function CourseFormPage() {
               {status !== 'ARCHIVED' && (
                 <button
                   type="button"
-                  className="btn btn-danger btn-lg"
+                  className="btn btn-danger btn-lg ui-inline"
                   disabled={archiving || saving || publishing}
                   onClick={() => setShowArchiveConfirm(true)}
                   title="Archive course to retire it from new enrollments"
                 >
-                  📦 Archive Course
+                  <UiIcon name="archive" size={17} />
+                  Archive Course
                 </button>
               )}
             </div>

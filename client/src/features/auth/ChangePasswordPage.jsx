@@ -58,6 +58,7 @@ export default function ChangePasswordPage() {
   return (
     <main className="auth-centered-page">
       <section className="auth-card" aria-labelledby="change-password-title">
+        <span className="auth-section-pill">Account Security</span>
         <h1 id="change-password-title" className="auth-card__title">Change password</h1>
         <p className="auth-card__subtitle">Enter your current password and choose a new one.</p>
 

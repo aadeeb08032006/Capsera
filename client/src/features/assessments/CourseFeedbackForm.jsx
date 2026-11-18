@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getCourseFeedback, upsertCourseFeedback } from './assessmentsApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 import './assessments.css';
 
 const RATING_LABELS = {
@@ -108,7 +109,9 @@ export default function CourseFeedbackForm() {
 
       {error && (
         <div className="scorecard-hero hero-failed" style={{ marginBottom: '1.5rem' }}>
-          <div className="scorecard-hero-icon">⚠️</div>
+          <div className="scorecard-hero-icon" aria-hidden="true">
+            <UiIcon name="alert-triangle" size={32} />
+          </div>
           <div className="scorecard-hero-body">
             <h3>Notice</h3>
             <p>{error}</p>
@@ -134,11 +137,14 @@ export default function CourseFeedbackForm() {
               <span style={{ fontSize: '1.25rem', color: '#64748b', fontWeight: 500 }}> / 5</span>
             </div>
             <div>
-              <div style={{ display: 'flex', gap: '0.2rem', color: '#f59e0b', fontSize: '1.3rem' }}>
+              <div style={{ display: 'flex', gap: '0.2rem', color: '#f59e0b' }}>
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <span key={star}>
-                    {avgRating && star <= Math.round(Number(avgRating)) ? '★' : '☆'}
-                  </span>
+                  <UiIcon
+                    key={star}
+                    name="star"
+                    size={20}
+                    filled={Boolean(avgRating && star <= Math.round(Number(avgRating)))}
+                  />
                 ))}
               </div>
               <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
@@ -159,7 +165,9 @@ export default function CourseFeedbackForm() {
 
         {formSuccess && (
           <div className="scorecard-hero hero-passed" style={{ marginBottom: '1.25rem' }}>
-            <div className="scorecard-hero-icon">✓</div>
+            <div className="scorecard-hero-icon" aria-hidden="true">
+              <UiIcon name="check-circle" size={30} />
+            </div>
             <div className="scorecard-hero-body">
               <h3>Success</h3>
               <p>{formSuccess}</p>
@@ -169,7 +177,9 @@ export default function CourseFeedbackForm() {
 
         {formError && (
           <div className="scorecard-hero hero-failed" style={{ marginBottom: '1.25rem' }}>
-            <div className="scorecard-hero-icon">⚠️</div>
+            <div className="scorecard-hero-icon" aria-hidden="true">
+              <UiIcon name="alert-triangle" size={30} />
+            </div>
             <div className="scorecard-hero-body">
               <h3>Submission Error</h3>
               <p>{formError}</p>
@@ -185,7 +195,7 @@ export default function CourseFeedbackForm() {
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <div
-                style={{ display: 'flex', gap: '0.25rem', fontSize: '2rem', cursor: 'pointer' }}
+                style={{ display: 'flex', gap: '0.25rem', cursor: 'pointer' }}
                 onMouseLeave={() => setHoverRating(0)}
               >
                 {[1, 2, 3, 4, 5].map((star) => {
@@ -200,14 +210,15 @@ export default function CourseFeedbackForm() {
                         padding: 0,
                         cursor: 'pointer',
                         color: activeStar ? '#f59e0b' : '#cbd5e1',
-                        fontSize: '2rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
                         transition: 'transform 0.1s ease',
                       }}
                       onMouseEnter={() => setHoverRating(star)}
                       onClick={() => setRating(star)}
                       aria-label={`Rate ${star} stars`}
                     >
-                      ★
+                      <UiIcon name="star" size={26} filled={activeStar} />
                     </button>
                   );
                 })}
@@ -240,11 +251,12 @@ export default function CourseFeedbackForm() {
           <div style={{ marginTop: '1.25rem' }}>
             <button
               type="submit"
-              className="btn btn-primary"
+              className="btn btn-primary ui-inline"
               disabled={submitting}
               style={{ padding: '0.6rem 1.75rem', fontSize: '0.95rem' }}
             >
-              {submitting ? 'Submitting Review...' : '⭐ Submit Feedback'}
+              {!submitting && <UiIcon name="star" size={16} filled />}
+              {submitting ? 'Submitting Review...' : 'Submit Feedback'}
             </button>
           </div>
         </form>
@@ -307,11 +319,14 @@ export default function CourseFeedbackForm() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.15rem', color: '#f59e0b', fontSize: '1.1rem' }}>
+                  <div style={{ display: 'flex', gap: '0.15rem', color: '#f59e0b' }}>
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <span key={star}>
-                        {star <= Number(rev.rating) ? '★' : '☆'}
-                      </span>
+                      <UiIcon
+                        key={star}
+                        name="star"
+                        size={16}
+                        filled={star <= Number(rev.rating)}
+                      />
                     ))}
                   </div>
                 </div>

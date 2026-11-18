@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import UiIcon from '../../components/UiIcon.jsx';
 import './assessments.css';
 
 /**
@@ -39,14 +40,14 @@ export default function ScorecardModal({
             onClick={onClose}
             aria-label="Close scorecard"
           >
-            ✕
+            <UiIcon name="x" size={16} />
           </button>
         </div>
 
         {/* Hero Result Banner */}
         <div className={`scorecard-hero ${isPassed ? 'hero-passed' : 'hero-failed'}`}>
           <div className="scorecard-hero-icon" aria-hidden="true">
-            {isPassed ? '🎉' : '⚠️'}
+            <UiIcon name={isPassed ? 'check-circle' : 'alert-triangle'} size={34} />
           </div>
           <div className="scorecard-hero-body">
             <h3>{isPassed ? 'Congratulations! You Passed!' : 'Assessment Not Passed'}</h3>
@@ -98,7 +99,9 @@ export default function ScorecardModal({
         {/* Course Completion & Certificate Notice (PRD §6.6) */}
         {isPassed && (
           <div className="scorecard-completion-banner">
-            <div className="completion-icon" aria-hidden="true">🏆</div>
+            <div className="completion-icon" aria-hidden="true">
+              <UiIcon name="award" size={30} />
+            </div>
             <div>
               <strong>Course Completion Credit Unlocked</strong>
               <p>
@@ -131,8 +134,11 @@ export default function ScorecardModal({
                 >
                   <div className="scorecard-q-header">
                     <span className="scorecard-q-num">Question {idx + 1}</span>
-                    <span className={`scorecard-q-pill ${isCorrect ? 'pill-correct' : 'pill-incorrect'}`}>
-                      {isCorrect ? '✓ Correct (+ ' + (ans.pointsAwarded ?? ans.points) + ' pts)' : '✗ Incorrect (0 pts)'}
+                    <span className={`scorecard-q-pill ui-inline ${isCorrect ? 'pill-correct' : 'pill-incorrect'}`}>
+                      <UiIcon name={isCorrect ? 'check' : 'x'} size={14} />
+                      {isCorrect
+                        ? `Correct (+ ${ans.pointsAwarded ?? ans.points} pts)`
+                        : 'Incorrect (0 pts)'}
                     </span>
                   </div>
 
@@ -165,7 +171,10 @@ export default function ScorecardModal({
 
                   {ans.explanation && (
                     <div className="scorecard-explanation-box">
-                      <strong>💡 Instructor Explanation:</strong>
+                      <strong className="ui-inline">
+                        <UiIcon name="lightbulb" size={15} />
+                        Instructor Explanation:
+                      </strong>
                       <p>{ans.explanation}</p>
                     </div>
                   )}
@@ -180,19 +189,21 @@ export default function ScorecardModal({
           {canRetake && (
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary ui-inline"
               onClick={onRetake}
             >
-              🔄 Retake Assessment ({maxAttempts - attemptNumber} left)
+              <UiIcon name="refresh" size={15} />
+              Retake Assessment ({maxAttempts - attemptNumber} left)
             </button>
           )}
 
           {courseId && (
             <Link
               to={`/courses/${courseId}/feedback`}
-              className="btn btn-secondary"
+              className="btn btn-secondary ui-inline"
             >
-              ⭐ Leave Course Feedback
+              <UiIcon name="star" size={15} filled />
+              Leave Course Feedback
             </Link>
           )}
 

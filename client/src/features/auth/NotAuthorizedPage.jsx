@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
+import { CapseraCubeLogo } from '../admin/AdminLayout.jsx';
 
 export default function NotAuthorizedPage() {
   const { user } = useAuth();
@@ -8,7 +9,12 @@ export default function NotAuthorizedPage() {
   return (
     <main className="auth-centered-page">
       <div className="auth-card auth-card--wide">
-        <div className="auth-not-authorized-icon" aria-hidden="true">🚫</div>
+        <div className="auth-brand-header">
+          <span className="auth-brand-mark" aria-hidden="true">
+            <CapseraCubeLogo />
+          </span>
+          <span className="auth-brand-name">CAPSERA LMS</span>
+        </div>
         <h1 className="auth-card__title">Access Denied</h1>
         <p className="auth-card__subtitle">
           {user

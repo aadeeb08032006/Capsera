@@ -8,6 +8,13 @@ import {
   listMyAttempts,
 } from './assessmentsApi.js';
 import ScorecardModal from './ScorecardModal.jsx';
+import UiIcon from '../../components/UiIcon.jsx';
+import {
+  formatTimeAllowedLabel,
+  resolveInitialRemainingSeconds,
+  resolveResumedQuestions,
+  shouldRenderCountdown,
+} from './assessmentHelpers.js';
 import './assessments.css';
 
 function formatTimer(totalSeconds) {
@@ -74,11 +81,25 @@ export default function QuizPlayer() {
         const resumeRes = await getAttemptById(activeAttempt.id);
         if (resumeRes?.attempt?.status === 'IN_PROGRESS') {
           setAttempt(resumeRes.attempt);
-          setRemainingSeconds(resumeRes.remainingSeconds ?? 0);
-          // If questions were returned or need to be fetched:
-          if (resumeRes.questions) {
-            setQuestions(resumeRes.questions);
+          setRemainingSeconds(
+            resolveInitialRemainingSeconds({
+              serverRemainingSeconds: resumeRes.remainingSeconds,
+              durationMinutes: assessData?.durationMinutes,
+            }),
+          );
+          const resumedQuestions = resolveResumedQuestions({
+            resumeQuestions: resumeRes.questions,
+            assessmentQuestions: metaRes?.questions,
+          });
+          if (resumedQuestions.length > 0) {
+            setQuestions(resumedQuestions);
           }
+        } else if (resumeRes?.attempt) {
+          setPreviousAttempts((prev) =>
+            prev.map((item) =>
+              item.id === resumeRes.attempt.id ? resumeRes.attempt : item,
+            ),
+          );
         }
       }
     } catch (err) {
@@ -131,7 +152,12 @@ export default function QuizPlayer() {
       setQuestions(res.questions || []);
       setCurrentQIndex(0);
       setUserAnswers({});
-      setRemainingSeconds(res.attempt.remainingSeconds ?? (assessment.durationMinutes * 60));
+      setRemainingSeconds(
+        resolveInitialRemainingSeconds({
+          serverRemainingSeconds: res.attempt?.remainingSeconds,
+          durationMinutes: assessment?.durationMinutes,
+        }),
+      );
     } catch (err) {
       setSubmitError(err.message || 'Failed to start assessment attempt.');
     } finally {
@@ -199,6 +225,7 @@ export default function QuizPlayer() {
     setGradedResult(null);
     setAttempt(null);
     setQuestions([]);
+    setRemainingSeconds(null);
     handleStartAttempt();
   }
 
@@ -263,7 +290,9 @@ export default function QuizPlayer() {
 
         {submitError && (
           <div className="scorecard-hero hero-failed" style={{ marginBottom: '1.5rem' }}>
-            <div className="scorecard-hero-icon">⚠️</div>
+            <div className="scorecard-hero-icon" aria-hidden="true">
+              <UiIcon name="alert-triangle" size={30} />
+            </div>
             <div className="scorecard-hero-body">
               <h3>Action Notice</h3>
               <p>{submitError}</p>
@@ -281,8 +310,12 @@ export default function QuizPlayer() {
           <div className="scorecard-kpi-grid" style={{ marginTop: '1.25rem' }}>
             <div className="scorecard-kpi-card">
               <span className="scorecard-kpi-label">Time Allowed</span>
-              <span className="scorecard-kpi-value">{assessment.durationMinutes} Min</span>
-              <span className="scorecard-kpi-subtext">Continuous timer</span>
+              <span className="scorecard-kpi-value">
+                {formatTimeAllowedLabel(assessment.durationMinutes)}
+              </span>
+              <span className="scorecard-kpi-subtext">
+                {assessment.durationMinutes ? 'Continuous timer' : 'No time limit'}
+              </span>
             </div>
             <div className="scorecard-kpi-card">
               <span className="scorecard-kpi-label">Passing Score</span>
@@ -304,9 +337,15 @@ export default function QuizPlayer() {
           <div style={{ marginTop: '1.5rem', background: '#f8fafc', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #e2e8f0' }}>
             <h4 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>Important Rules:</h4>
             <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#475569', fontSize: '0.9rem', lineHeight: '1.5' }}>
-              <li>The timer begins the moment you click <strong>Start Assessment</strong> and cannot be paused.</li>
+              {assessment.durationMinutes ? (
+                <>
+                  <li>The timer begins the moment you click <strong>Start Assessment</strong> and cannot be paused.</li>
+                  <li>When the countdown timer expires, your recorded selections are submitted automatically.</li>
+                </>
+              ) : (
+                <li>This assessment is untimed; take your time reviewing questions and submit when ready.</li>
+              )}
               <li>You may jump between questions freely using the question navigator strip.</li>
-              <li>When the countdown timer expires, your recorded selections are submitted automatically.</li>
               <li>Your scorecard with detailed answers and explanations will appear immediately upon submission.</li>
             </ul>
           </div>
@@ -314,17 +353,27 @@ export default function QuizPlayer() {
           <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary ui-inline"
               style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
               onClick={handleStartAttempt}
               disabled={submitting || (attemptsLeft === 0 && !attempt)}
             >
-              {submitting ? 'Preparing Attempt...' : attemptsLeft === 0 ? 'No Attempts Remaining' : '🚀 Start Assessment Now'}
+              {submitting ? (
+                'Preparing Attempt...'
+              ) : attemptsLeft === 0 ? (
+                'No Attempts Remaining'
+              ) : (
+                <>
+                  <UiIcon name="play" size={16} />
+                  Start Assessment Now
+                </>
+              )}
             </button>
 
             {effectiveCourseId && (
-              <Link to={`/courses/${effectiveCourseId}/feedback`} className="btn btn-secondary">
-                ⭐ Course Feedback
+              <Link to={`/courses/${effectiveCourseId}/feedback`} className="btn btn-secondary ui-inline">
+                <UiIcon name="star" size={15} filled />
+                Course Feedback
               </Link>
             )}
           </div>
@@ -405,8 +454,9 @@ export default function QuizPlayer() {
   }
 
   // ─── RENDER: Active In-Progress Quiz Player ───
-  const isTimerCritical = remainingSeconds !== null && remainingSeconds <= 30;
-  const isTimerWarning = remainingSeconds !== null && remainingSeconds <= 120 && !isTimerCritical;
+  const hasTimer = shouldRenderCountdown(remainingSeconds);
+  const isTimerCritical = hasTimer && remainingSeconds <= 30;
+  const isTimerWarning = hasTimer && remainingSeconds <= 120 && !isTimerCritical;
 
   let timerClass = 'quiz-timer-pill';
   if (isTimerCritical) timerClass += ' timer-critical';
@@ -425,10 +475,14 @@ export default function QuizPlayer() {
         </div>
 
         <div className="quiz-header-right">
-          <div className={timerClass} role="timer" aria-live="polite">
-            <span className="timer-icon" aria-hidden="true">⏱️</span>
-            <span className="timer-digits">{formatTimer(remainingSeconds)}</span>
-          </div>
+          {hasTimer && (
+            <div className={timerClass} role="timer" aria-live="polite">
+              <span className="timer-icon ui-inline" aria-hidden="true">
+                <UiIcon name="clock" size={16} />
+              </span>
+              <span className="timer-digits">{formatTimer(remainingSeconds)}</span>
+            </div>
+          )}
 
           <button
             type="button"
@@ -443,7 +497,9 @@ export default function QuizPlayer() {
 
       {submitError && (
         <div className="scorecard-hero hero-failed" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-          <div className="scorecard-hero-icon">⚠️</div>
+          <div className="scorecard-hero-icon" aria-hidden="true">
+            <UiIcon name="alert-triangle" size={30} />
+          </div>
           <div className="scorecard-hero-body">
             <h3>Submission Notice</h3>
             <p>{submitError}</p>
@@ -578,8 +634,9 @@ export default function QuizPlayer() {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => setShowConfirmModal(false)}
+                aria-label="Close confirmation dialog"
               >
-                ✕
+                <UiIcon name="x" size={15} />
               </button>
             </div>
 
@@ -588,8 +645,11 @@ export default function QuizPlayer() {
             </p>
 
             {answeredCount < totalCount && (
-              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.75rem', color: '#92400e', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                ⚠️ You still have <strong>{totalCount - answeredCount} unanswered</strong> questions. Unanswered questions will receive 0 points.
+              <div className="ui-inline" style={{ display: 'flex', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.375rem', padding: '0.75rem', color: '#92400e', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                <UiIcon name="alert-triangle" size={16} />
+                <span>
+                  You still have <strong>{totalCount - answeredCount} unanswered</strong> questions. Unanswered questions will receive 0 points.
+                </span>
               </div>
             )}
 

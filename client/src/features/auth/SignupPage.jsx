@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
+import { CapseraCubeLogo } from '../admin/AdminLayout.jsx';
+import UiIcon from '../../components/UiIcon.jsx';
 
 const PASSWORD_REGEX_LETTER = /[a-zA-Z]/;
 const PASSWORD_REGEX_NUMBER = /[0-9]/;
@@ -93,7 +95,9 @@ export default function SignupPage() {
     return (
       <main className="auth-centered-page">
         <div className="auth-card">
-          <div className="auth-success-icon" aria-hidden="true">✅</div>
+          <div className="auth-success-icon" aria-hidden="true">
+            <UiIcon name="check-circle" size={40} />
+          </div>
           <h1 className="auth-card__title">Account Created!</h1>
           <div className="auth-pending-notice" role="status">
             <strong>Your account is pending admin approval.</strong>
@@ -115,8 +119,14 @@ export default function SignupPage() {
   return (
     <main className="auth-centered-page">
       <div className="auth-card">
+        <div className="auth-brand-header">
+          <span className="auth-brand-mark" aria-hidden="true">
+            <CapseraCubeLogo />
+          </span>
+          <span className="auth-brand-name">CAPSERA LMS</span>
+        </div>
         <h1 className="auth-card__title">Create Account</h1>
-        <p className="auth-card__subtitle">Join CAPSERA to get started</p>
+        <p className="auth-card__subtitle">Register as a Trainee or Trainer to join CAPSERA</p>
 
         {serverError && (
           <div className="auth-alert" role="alert">

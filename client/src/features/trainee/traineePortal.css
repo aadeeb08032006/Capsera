@@ -1,0 +1,286 @@
+/* ─── CAPSERA Phase 2: Trainee Portal UI — Blue (#365CF5) + Lime (#CBF36B) Design System ─── */
+
+.trainee-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.trainee-welcome-banner {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #365cf5;
+  border-radius: 0.75rem;
+  padding: 1.15rem 1.3rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.trainee-welcome-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-width: 680px;
+}
+
+.trainee-welcome-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.trainee-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background-color: #1b2030;
+  color: #cbf36b;
+}
+
+.trainee-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background-color: #cbf36b;
+  color: #18202f;
+}
+
+.trainee-email-meta {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.trainee-welcome-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #18202f;
+}
+
+.trainee-welcome-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.trainee-enrollment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trainee-enrollment-item {
+  background-color: #f7f8fc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.trainee-enrollment-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.trainee-enrollment-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #18202f;
+}
+
+.trainee-enrollment-title a {
+  color: #18202f;
+  text-decoration: none;
+}
+
+.trainee-enrollment-title a:hover {
+  color: #365cf5;
+  text-decoration: underline;
+}
+
+.trainee-enrollment-meta {
+  margin: 0.18rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.trainee-enrollment-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.trainee-enrollment-badge--active {
+  background-color: #eef2ff;
+  color: #365cf5;
+}
+
+.trainee-enrollment-badge--completed {
+  background-color: #cbf36b;
+  color: #18202f;
+}
+
+.trainee-enrollment-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.trainee-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.trainee-announcements-wrapper .announcements-section {
+  margin-top: 0;
+}
+
+/* ─── Trainee Skills Summary Strip ─── */
+.trainee-skills-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.trainee-skills-stat-card {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.95rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.trainee-skills-stat-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.trainee-skills-stat-value {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #18202f;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.trainee-skills-stat-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+/* ─── Scoped Blue + Lime Styling for Embedded Trainee Pages (/profile, /change-password) ─── */
+.trainee-portal-embedded > .profile-page {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.trainee-portal-embedded .profile-page .page-eyebrow {
+  color: #365cf5;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+}
+
+.trainee-portal-embedded .profile-page .page-header h1 {
+  color: #18202f;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.trainee-portal-embedded .profile-page .page-header > p:last-child {
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.trainee-portal-embedded .profile-page .profile-form {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.35rem 1.4rem;
+}
+
+.trainee-portal-embedded .profile-page .page-field label {
+  color: #18202f;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.trainee-portal-embedded .profile-page .page-field input,
+.trainee-portal-embedded .profile-page .page-field textarea {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: #18202f;
+  font-size: 0.86rem;
+}
+
+.trainee-portal-embedded .profile-page .page-field input:focus-visible,
+.trainee-portal-embedded .profile-page .page-field textarea:focus-visible {
+  outline: 2px solid #365cf5;
+  outline-offset: 2px;
+  border-color: #365cf5;
+}
+
+.trainee-portal-embedded .profile-page .page-button--primary {
+  background-color: #365cf5;
+  border-color: #365cf5;
+  color: #ffffff;
+  border-radius: 0.5rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.trainee-portal-embedded .profile-page .page-button--primary:hover:not(:disabled) {
+  background-color: #294ce0;
+}
+
+.trainee-portal-embedded .profile-page .page-success {
+  background-color: #f3fcd9;
+  border-color: #cbf36b;
+  color: #18202f;
+  border-radius: 0.55rem;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .trainee-shortcuts-grid,
+  .trainee-skills-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

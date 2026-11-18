@@ -1,5 +1,7 @@
 import React, { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { DashboardIcon } from '../admin/AdminLayout.jsx';
+import TraineeLayout from '../trainee/TraineeLayout.jsx';
 import { listMyCertificates } from './certificatesApi.js';
 import './certificates.css';
 
@@ -66,17 +68,58 @@ export default function MyCertificatesPage() {
 
   const totalItems = pagination.totalItems ?? 0;
   const totalPages = pagination.totalPages ?? 0;
+  const validOnPage = items.filter((item) => item.isValid !== false).length;
 
   return (
-    <main className="certificates-page">
-      <header className="certificates-page-header">
-        <h1 id={headingId}>My Certificates</h1>
-        <p className="certificates-subtitle">
-          Completion certificates earned after finishing all course lessons and required assessments.
-        </p>
-      </header>
+    <TraineeLayout
+      title="My Certificates"
+      eyebrow="Credentials & Achievements"
+      subtitle="Completion certificates earned after finishing all course lessons and required assessments."
+      headerActions={
+        <div className="trainee-header-actions">
+          <Link
+            to="/certificates/verify"
+            className="admin-dashboard-btn admin-dashboard-btn-secondary"
+          >
+            Public Verifier
+          </Link>
+          <button
+            type="button"
+            className="admin-dashboard-btn admin-dashboard-btn-primary"
+            onClick={() => setRefreshTick((tick) => tick + 1)}
+            disabled={isLoading}
+          >
+            <DashboardIcon name="refresh" />
+            <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+        </div>
+      }
+    >
+      <div className="certificates-summary-bar" role="note">
+        <div className="certificates-summary-copy">
+          <span className="certificates-summary-pill">Automatic Eligibility</span>
+          <span>
+            Certificates are issued automatically when you complete 100% of a course&apos;s lessons
+            and pass all required assessments.
+          </span>
+        </div>
+        <span className="certificates-summary-count">
+          <strong>{totalItems}</strong> earned ({validOnPage} valid on page)
+        </span>
+      </div>
 
       <section className="certificates-card" aria-labelledby={headingId}>
+        <div className="certificates-card-header">
+          <div>
+            <h2 id={headingId} className="certificates-section-title">
+              Issued Credentials ({totalItems})
+            </h2>
+            <p className="certificates-subtitle">
+              Each certificate carries a unique verification code that can be validated publicly.
+            </p>
+          </div>
+        </div>
+
         {isLoading && (
           <p className="certificates-status-text" role="status" aria-live="polite">
             Loading your certificates...
@@ -102,6 +145,14 @@ export default function MyCertificatesPage() {
               You have not earned any completion certificates yet. Complete all lessons and required
               assessments in an enrolled course to become eligible.
             </p>
+            <div className="certificates-empty-actions">
+              <Link to="/my-learning" className="certificates-btn certificates-btn-primary">
+                Go to My Learning
+              </Link>
+              <Link to="/courses" className="certificates-btn certificates-btn-secondary">
+                Explore Courses
+              </Link>
+            </div>
           </div>
         )}
 
@@ -111,13 +162,25 @@ export default function MyCertificatesPage() {
               {items.map((item) => {
                 const verifyPath = `/certificates/verify/${encodeURIComponent(item.certificateCode)}`;
                 return (
-                  <article key={String(item.id)} className="certificate-item-card">
+                  <article
+                    key={String(item.id)}
+                    className={`certificate-item-card ${
+                      item.isValid
+                        ? 'certificate-item-card--valid'
+                        : 'certificate-item-card--revoked'
+                    }`}
+                  >
                     <div className="certificate-card-top">
-                      <div>
-                        <h2 className="certificate-course-title">{item.courseTitle}</h2>
-                        {item.courseSubject && (
-                          <p className="certificate-course-subject">{item.courseSubject}</p>
-                        )}
+                      <div className="certificate-identity">
+                        <span className="certificate-seal-icon" aria-hidden="true">
+                          <DashboardIcon name="certificates" />
+                        </span>
+                        <div>
+                          <h2 className="certificate-course-title">{item.courseTitle}</h2>
+                          {item.courseSubject && (
+                            <p className="certificate-course-subject">{item.courseSubject}</p>
+                          )}
+                        </div>
                       </div>
                       <span
                         className={`certificate-badge ${
@@ -129,18 +192,18 @@ export default function MyCertificatesPage() {
                     </div>
 
                     <dl className="certificate-details-grid">
-                      <div>
+                      <div className="certificate-detail-box">
                         <dt>Certificate Code</dt>
                         <dd className="certificate-code-inline">{item.certificateCode}</dd>
                       </div>
-                      <div>
+                      <div className="certificate-detail-box">
                         <dt>Issued Date</dt>
                         <dd>{formatDate(item.issuedAt)}</dd>
                       </div>
                     </dl>
 
                     <div className="certificate-item-actions">
-                      <Link to={verifyPath} className="certificates-btn certificates-btn-secondary">
+                      <Link to={verifyPath} className="certificates-btn certificates-btn-primary">
                         Public Verification View
                       </Link>
                     </div>
@@ -173,7 +236,6 @@ export default function MyCertificatesPage() {
           </>
         )}
       </section>
-    </main>
+    </TraineeLayout>
   );
 }
-

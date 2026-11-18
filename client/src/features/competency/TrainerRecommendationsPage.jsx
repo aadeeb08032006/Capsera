@@ -1,5 +1,8 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext.jsx';
+import AdminLayout, { DashboardIcon } from '../admin/AdminLayout.jsx';
+import TraineeLayout from '../trainee/TraineeLayout.jsx';
 import { getTrainerRecommendations, listAllSkills } from './competencyApi.js';
 import './competency.css';
 
@@ -38,6 +41,7 @@ function formatApiError(error, fallbackMessage) {
  * @param {string | null} [props.coursesPath=null] - Optional registered route path for published courses
  */
 export default function TrainerRecommendationsPage({ coursesPath = null } = {}) {
+  const { user } = useAuth();
   const skillSelectId = useId();
   const selectorHeadingId = useId();
   const resultsHeadingId = useId();
@@ -152,6 +156,13 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
     skillSelectRef.current?.focus();
   }
 
+  function handleHeaderRefresh() {
+    setSkillsRefreshTick((tick) => tick + 1);
+    if (selectedSkillId) {
+      setRecRefreshTick((tick) => tick + 1);
+    }
+  }
+
   const matchedSkill = recommendationData?.skill ?? selectedSkillSummary;
   const items = recommendationData?.items ?? [];
   const pagination = recommendationData?.pagination ?? {
@@ -170,16 +181,25 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
       ? coursesPath.trim()
       : null;
 
-  return (
-    <main className="competency-page">
-      <header className="competency-page-header">
-        <h1>Trainer Recommendations</h1>
-        <p className="competency-subtitle">
-          Find active trainers matched deterministically by canonical skill, declared proficiency,
-          and skill-specific years of experience.
-        </p>
-      </header>
+  const PortalShell = user?.role === 'ADMIN' ? AdminLayout : TraineeLayout;
 
+  return (
+    <PortalShell
+      title="Trainer Recommendations"
+      eyebrow="Competency-Based Trainer Discovery"
+      subtitle="Find active trainers matched deterministically by canonical skill, declared proficiency, and skill-specific years of experience."
+      headerActions={
+        <button
+          type="button"
+          className="admin-dashboard-btn admin-dashboard-btn-primary"
+          onClick={handleHeaderRefresh}
+          disabled={isLoadingSkills || isLoadingRecs}
+        >
+          <DashboardIcon name="refresh" />
+          <span>{isLoadingSkills || isLoadingRecs ? 'Refreshing...' : 'Refresh'}</span>
+        </button>
+      }
+    >
       <div className="competency-banner competency-banner-info" role="note">
         Recommendations are based on trainers&apos; self-declared competency profiles and
         skill-specific experience. Self-declared information is not independently verified and does
@@ -187,7 +207,7 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
       </div>
 
       <section className="competency-card" aria-labelledby={selectorHeadingId}>
-        <div className="competency-card-header">
+        <div className="competency-card-header competency-card-header--bordered">
           <div>
             <h2 id={selectorHeadingId} className="competency-title">
               Select a Canonical Skill
@@ -196,6 +216,7 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
               Choose a skill from the canonical catalogue to view matching active trainers.
             </p>
           </div>
+          <span className="competency-meta-pill">Deterministic Ranking</span>
         </div>
 
         {isLoadingSkills && (
@@ -227,7 +248,7 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
           <div className="competency-recommendation-controls">
             <div className="competency-field competency-recommendation-select-field">
               <label className="competency-label" htmlFor={skillSelectId}>
-                Canonical Skill
+                Canonical Skill ({skills.length} available)
               </label>
               <select
                 ref={skillSelectRef}
@@ -244,13 +265,24 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
                 ))}
               </select>
             </div>
+            {selectedSkillId && (
+              <div className="competency-filter-actions">
+                <button
+                  type="button"
+                  className="competency-btn competency-btn-secondary"
+                  onClick={handleClearSelectionAndFocus}
+                >
+                  Clear Selection
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
 
       {selectedSkillId && (
         <section className="competency-card" aria-labelledby={resultsHeadingId}>
-          <div className="competency-card-header">
+          <div className="competency-card-header competency-card-header--bordered">
             <div>
               <h2 id={resultsHeadingId} className="competency-title">
                 {matchedSkill
@@ -268,6 +300,9 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
                 </p>
               )}
             </div>
+            {matchedSkill?.category && (
+              <span className="competency-active-filter-badge">{matchedSkill.category}</span>
+            )}
           </div>
 
           {isLoadingRecs && (
@@ -414,6 +449,6 @@ export default function TrainerRecommendationsPage({ coursesPath = null } = {}) 
           )}
         </section>
       )}
-    </main>
+    </PortalShell>
   );
 }

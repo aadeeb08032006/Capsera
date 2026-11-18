@@ -9,6 +9,7 @@ import {
   downloadResourceFile,
 } from './coursesApi.js';
 import { listAssessmentsByCourse } from '../assessments/assessmentsApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export default function LessonViewerPage() {
   const { courseId, lessonId } = useParams();
@@ -268,12 +269,13 @@ export default function LessonViewerPage() {
       <div className="viewer-mobile-bar">
         <button
           type="button"
-          className="btn btn-secondary btn-sm"
+          className="btn btn-secondary btn-sm ui-inline"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-expanded={sidebarOpen}
           aria-controls="curriculum-sidebar"
         >
-          {sidebarOpen ? '✕ Close Curriculum' : '☰ Course Lessons'}
+          <UiIcon name={sidebarOpen ? 'x' : 'menu'} size={15} />
+          {sidebarOpen ? 'Close Curriculum' : 'Course Lessons'}
         </button>
         <span className="mobile-lesson-indicator">
           Lesson {currentLessonIndex + 1} of {lessons.length}
@@ -311,7 +313,7 @@ export default function LessonViewerPage() {
                     aria-current={isActive ? 'page' : undefined}
                   >
                     <span className="lesson-badge-num">
-                      {isDone ? '✓' : idx + 1}
+                      {isDone ? <UiIcon name="check" size={14} /> : idx + 1}
                     </span>
                     <span className="lesson-title-text">{lesson.title}</span>
                     {lesson.estimatedDurationMinutes && (
@@ -422,17 +424,20 @@ export default function LessonViewerPage() {
               fontWeight: 500,
             }}
           >
-            ★ Course Reviews & Feedback →
+            <UiIcon name="star" size={14} filled />
+            Course Reviews & Feedback →
           </Link>
         </div>
       </aside>
 
       {/* Main Lesson Stage */}
       <main className="viewer-main-content" tabIndex="-1">
-        {/* Full Course Completion Celebration Banner */}
+        {/* Full Course Completion Banner */}
         {bannerType === 'COURSE_COMPLETED' && (
           <div className="completion-banner" role="status" aria-live="polite">
-            <div className="banner-icon" aria-hidden="true">🎉</div>
+            <div className="banner-icon" aria-hidden="true">
+              <UiIcon name="award" size={30} />
+            </div>
             <div className="banner-text">
               <h3>Congratulations! Course Completed!</h3>
               <p>You have completed all lessons and satisfied all requirements for <strong>{course?.title}</strong>!</p>
@@ -460,7 +465,9 @@ export default function LessonViewerPage() {
               color: '#92400e',
             }}
           >
-            <div className="banner-icon" aria-hidden="true">📝</div>
+            <div className="banner-icon" aria-hidden="true">
+              <UiIcon name="book-open" size={28} />
+            </div>
             <div className="banner-text">
               <h3 style={{ color: '#92400e' }}>All Lessons Completed!</h3>
               <p style={{ color: '#78350f' }}>
@@ -498,8 +505,9 @@ export default function LessonViewerPage() {
             </div>
 
             {currentLesson.estimatedDurationMinutes && (
-              <span className="duration-pill">
-                ⏱ {currentLesson.estimatedDurationMinutes} mins estimated
+              <span className="duration-pill ui-inline">
+                <UiIcon name="clock" size={14} />
+                {currentLesson.estimatedDurationMinutes} mins estimated
               </span>
             )}
           </div>
@@ -526,7 +534,9 @@ export default function LessonViewerPage() {
             <h2 id="resources-heading">Study Materials & Attached Resources</h2>
             {downloadError && (
               <div className="form-alert alert-error" role="alert">
-                <span className="alert-icon" aria-hidden="true">⚠️</span>
+                <span className="alert-icon" aria-hidden="true">
+                  <UiIcon name="alert-triangle" size={18} />
+                </span>
                 <div className="alert-body">{downloadError}</div>
               </div>
             )}
@@ -537,18 +547,20 @@ export default function LessonViewerPage() {
                     !res.lessonId || String(res.lessonId) === String(currentLesson.id),
                 )
                 .map((resource) => {
-                  const icon =
+                  const iconName =
                     resource.resourceType === 'VIDEO'
-                      ? '🎥'
+                      ? 'video'
                       : resource.resourceType === 'PRESENTATION'
-                      ? '📊'
+                      ? 'bar-chart'
                       : resource.resourceType === 'LINK'
-                      ? '🔗'
-                      : '📄';
+                      ? 'link'
+                      : 'file-text';
 
                   return (
                     <li key={resource.id} className="resource-item">
-                      <span className="resource-icon" aria-hidden="true">{icon}</span>
+                      <span className="resource-icon" aria-hidden="true">
+                        <UiIcon name={iconName} size={20} />
+                      </span>
                       <div className="resource-info">
                         <span className="resource-title">{resource.title}</span>
                         <div className="resource-meta-tags">
@@ -571,9 +583,10 @@ export default function LessonViewerPage() {
                           href={resource.externalUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="btn btn-sm btn-secondary"
+                          className="btn btn-sm btn-secondary ui-inline"
                         >
-                          Visit Link ↗
+                          Visit Link
+                          <UiIcon name="external-link" size={13} />
                         </a>
                       ) : (
                         <button
@@ -599,16 +612,21 @@ export default function LessonViewerPage() {
               <div className="trainee-action-group">
                 <button
                   type="button"
-                  className={`btn ${isCurrentCompleted || markSuccess ? 'btn-success' : 'btn-primary'} btn-lg`}
+                  className={`btn ${isCurrentCompleted || markSuccess ? 'btn-success' : 'btn-primary'} btn-lg ui-inline`}
                   onClick={handleMarkComplete}
                   disabled={marking || isCurrentCompleted || markSuccess}
                   aria-live="polite"
                 >
-                  {marking
-                    ? 'Updating Progress...'
-                    : isCurrentCompleted || markSuccess
-                    ? '✓ Lesson Completed'
-                    : 'Mark as Complete'}
+                  {marking ? (
+                    'Updating Progress...'
+                  ) : isCurrentCompleted || markSuccess ? (
+                    <>
+                      <UiIcon name="check" size={16} />
+                      Lesson Completed
+                    </>
+                  ) : (
+                    'Mark as Complete'
+                  )}
                 </button>
 
                 {markError && (

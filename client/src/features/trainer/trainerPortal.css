@@ -1,0 +1,327 @@
+/* ─── CAPSERA Phase 3: Trainer Portal UI — Blue (#365CF5) + Lime (#CBF36B) Design System ─── */
+
+.trainer-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.trainer-welcome-banner {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #365cf5;
+  border-radius: 0.75rem;
+  padding: 1.15rem 1.3rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.trainer-welcome-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-width: 680px;
+}
+
+.trainer-welcome-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.trainer-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background-color: #1b2030;
+  color: #cbf36b;
+}
+
+.trainer-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  background-color: #cbf36b;
+  color: #18202f;
+}
+
+.trainer-email-meta {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.trainer-welcome-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #18202f;
+}
+
+.trainer-welcome-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.trainer-course-overview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.trainer-course-overview-item {
+  background-color: #f7f8fc;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.trainer-course-overview-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.trainer-course-overview-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #18202f;
+}
+
+.trainer-course-overview-title a {
+  color: #18202f;
+  text-decoration: none;
+}
+
+.trainer-course-overview-title a:hover {
+  color: #365cf5;
+  text-decoration: underline;
+}
+
+.trainer-course-overview-meta {
+  margin: 0.18rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.trainer-course-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.trainer-course-pill--published {
+  background-color: #cbf36b;
+  color: #18202f;
+}
+
+.trainer-course-pill--draft {
+  background-color: #eef2ff;
+  color: #365cf5;
+}
+
+.trainer-course-pill--archived {
+  background-color: #e5e7eb;
+  color: #64748b;
+}
+
+.trainer-course-overview-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.trainer-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.trainer-announcements-wrapper .announcements-section {
+  margin-top: 0;
+}
+
+/* ─── Embedded Pages Inside Admin / Trainer / Trainee Portals ─── */
+.admin-portal-embedded > .profile-page,
+.admin-portal-embedded > .courses-page-container,
+.admin-portal-embedded > .assessment-container {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-portal-embedded > .auth-centered-page {
+  min-height: auto;
+  padding: 1rem 0 2rem;
+  background-color: transparent;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.admin-portal-embedded > .auth-centered-page > .auth-card {
+  max-width: 540px;
+}
+
+.trainer-portal-embedded .profile-page .page-eyebrow {
+  color: #365cf5;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+}
+
+.trainer-portal-embedded .profile-page .page-header h1 {
+  color: #18202f;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.trainer-portal-embedded .profile-page .page-header > p:last-child {
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+.trainer-portal-embedded .profile-page .profile-form {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1.35rem 1.4rem;
+}
+
+.trainer-portal-embedded .profile-page .page-field label {
+  color: #18202f;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.trainer-portal-embedded .profile-page .page-field input,
+.trainer-portal-embedded .profile-page .page-field textarea {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: #18202f;
+  font-size: 0.86rem;
+}
+
+.trainer-portal-embedded .profile-page .page-field input:focus-visible,
+.trainer-portal-embedded .profile-page .page-field textarea:focus-visible {
+  outline: 2px solid #365cf5;
+  outline-offset: 2px;
+  border-color: #365cf5;
+}
+
+.trainer-portal-embedded .profile-page .page-button--primary {
+  background-color: #365cf5;
+  border-color: #365cf5;
+  color: #ffffff;
+  border-radius: 0.5rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.trainer-portal-embedded .profile-page .page-button--primary:hover:not(:disabled) {
+  background-color: #294ce0;
+}
+
+.trainer-portal-embedded .profile-page .page-success {
+  background-color: #f3fcd9;
+  border-color: #cbf36b;
+  color: #18202f;
+  border-radius: 0.55rem;
+  font-weight: 600;
+}
+
+/* Trainer Courses & Editor Scoped Refinements */
+.trainer-portal-embedded .courses-page-container .trainer-badge {
+  background-color: #eef2ff;
+  color: #365cf5;
+}
+
+.trainer-portal-embedded .courses-page-container .btn-primary {
+  background-color: #365cf5;
+  border-color: #365cf5;
+  color: #ffffff;
+}
+
+.trainer-portal-embedded .courses-page-container .btn-primary:hover:not(:disabled) {
+  background-color: #294ce0;
+  border-color: #294ce0;
+}
+
+.trainer-portal-embedded .courses-page-container .status-tab-btn.active {
+  background-color: #1b2030;
+  color: #cbf36b;
+}
+
+.trainer-portal-embedded .courses-page-container .badge-published {
+  background-color: #cbf36b;
+  color: #18202f;
+  border-color: #cbf36b;
+}
+
+.trainer-portal-embedded .courses-page-container .badge-draft {
+  background-color: #eef2ff;
+  color: #365cf5;
+  border-color: #c7d2fe;
+}
+
+.trainer-portal-embedded .courses-page-container .form-breadcrumbs a,
+.trainer-portal-embedded .courses-page-container .reordering-indicator {
+  color: #365cf5;
+}
+
+.trainer-portal-embedded .courses-page-container .form-card,
+.trainer-portal-embedded .courses-page-container .stat-card,
+.trainer-portal-embedded .courses-page-container .trainer-course-card,
+.trainer-portal-embedded .courses-page-container .manage-lesson-item,
+.trainer-portal-embedded .courses-page-container .resource-manage-card {
+  border-color: #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.trainer-portal-embedded .courses-page-container .form-control {
+  border-color: #e5e7eb;
+  border-radius: 0.5rem;
+  color: #18202f;
+}
+
+.trainer-portal-embedded .courses-page-container .form-control:focus {
+  border-color: #365cf5;
+  box-shadow: 0 0 0 3px rgba(54, 92, 245, 0.14);
+}
+
+@media (max-width: 900px) {
+  .trainer-shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}

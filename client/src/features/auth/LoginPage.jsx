@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
+import { CapseraCubeLogo } from '../admin/AdminLayout.jsx';
 
 const ERROR_MESSAGES = {
   INVALID_CREDENTIALS: 'Incorrect email or password. Please try again.',
@@ -66,8 +67,14 @@ export default function LoginPage() {
   return (
     <main className="auth-centered-page">
       <div className="auth-card">
+        <div className="auth-brand-header">
+          <span className="auth-brand-mark" aria-hidden="true">
+            <CapseraCubeLogo />
+          </span>
+          <span className="auth-brand-name">CAPSERA LMS</span>
+        </div>
         <h1 className="auth-card__title">Sign In</h1>
-        <p className="auth-card__subtitle">Welcome back to CAPSERA</p>
+        <p className="auth-card__subtitle">Sign in to access your learning workspace</p>
 
         {serverError && (
           <div className="auth-alert" role="alert">

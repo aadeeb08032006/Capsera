@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { uploadResource } from './coursesApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export const RESOURCE_TYPE_OPTIONS = [
   { value: 'DOCUMENT', label: 'Document (PDF, DOCX, TXT)' },
@@ -131,13 +132,15 @@ export default function ResourceUploadModal({ courseId, lessons = [], isOpen, on
             disabled={submitting}
             aria-label="Close modal"
           >
-            ✕
+            <UiIcon name="x" size={16} />
           </button>
         </div>
 
         {error && (
           <div className="form-alert alert-error" role="alert">
-            <span className="alert-icon" aria-hidden="true">⚠️</span>
+            <span className="alert-icon" aria-hidden="true">
+              <UiIcon name="alert-triangle" size={18} />
+            </span>
             <div className="alert-body">{error}</div>
           </div>
         )}
@@ -148,7 +151,7 @@ export default function ResourceUploadModal({ courseId, lessons = [], isOpen, on
             type="button"
             role="tab"
             aria-selected={mode === 'FILE'}
-            className={`btn-mode-tab ${mode === 'FILE' ? 'active' : ''}`}
+            className={`btn-mode-tab ui-inline ${mode === 'FILE' ? 'active' : ''}`}
             onClick={() => {
               setMode('FILE');
               setFormData((prev) => ({
@@ -158,20 +161,22 @@ export default function ResourceUploadModal({ courseId, lessons = [], isOpen, on
               setError(null);
             }}
           >
-            📁 Local File Upload
+            <UiIcon name="folder" size={15} />
+            Local File Upload
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={mode === 'LINK'}
-            className={`btn-mode-tab ${mode === 'LINK' ? 'active' : ''}`}
+            className={`btn-mode-tab ui-inline ${mode === 'LINK' ? 'active' : ''}`}
             onClick={() => {
               setMode('LINK');
               setFormData((prev) => ({ ...prev, resourceType: 'LINK' }));
               setError(null);
             }}
           >
-            🔗 External Web Link
+            <UiIcon name="link" size={15} />
+            External Web Link
           </button>
         </div>
 

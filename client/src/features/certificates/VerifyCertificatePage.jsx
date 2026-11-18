@@ -119,6 +119,7 @@ export default function VerifyCertificatePage() {
       </nav>
 
       <header className="certificates-page-header">
+        <span className="certificates-summary-pill">Public Credential Verifier</span>
         <h1 id={headingId}>Verify Certificate</h1>
         <p className="certificates-subtitle">
           Enter a CAPSERA certificate verification code to confirm authenticity and validity status.

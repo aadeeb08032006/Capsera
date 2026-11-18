@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getMyEnrollments } from './coursesApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export default function MyLearningPage() {
   const [enrollments, setEnrollments] = useState([]);
@@ -83,7 +84,7 @@ export default function MyLearningPage() {
       {!loading && !error && enrollments.length === 0 && (
         <div className="courses-state-card courses-state-empty" role="status">
           <div className="courses-empty-icon" aria-hidden="true">
-            🎓
+            <UiIcon name="graduation-cap" size={34} />
           </div>
           <h2>No Enrolled Courses Yet</h2>
           <p>
@@ -158,8 +159,9 @@ export default function MyLearningPage() {
                         {item.completedLessons ?? 0} of {item.totalLessons ?? 0} lessons completed
                       </span>
                       {isComplete && (
-                        <span className="courses-complete-badge">
-                          ✓ Finished
+                        <span className="courses-complete-badge ui-inline">
+                          <UiIcon name="check-circle" size={14} />
+                          Finished
                         </span>
                       )}
                     </div>
