@@ -310,9 +310,9 @@ export default function CourseDetailPage() {
                         )}
                       </h3>
                       <span className="courses-lesson-duration">
-                        Passing score: {assessment.passingScore}%
-                        {assessment.timeLimitMinutes
-                          ? ` • ⏱ ${assessment.timeLimitMinutes} mins`
+                        Passing score: {assessment.passPercentage ?? assessment.passingScore}%
+                        {assessment.durationMinutes || assessment.timeLimitMinutes
+                          ? ` • ⏱ ${assessment.durationMinutes || assessment.timeLimitMinutes} mins`
                           : ' • No time limit'}
                       </span>
                     </div>
