@@ -1,6 +1,8 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext.jsx';
-import { isAdminPortalRoute } from '../features/admin/AdminLayout.jsx';
+import { CapseraCubeLogo, isAdminPortalRoute } from '../features/admin/AdminLayout.jsx';
+import { isTraineePortalRoute } from '../features/trainee/TraineeLayout.jsx';
+import { isTrainerPortalRoute } from '../features/trainer/TrainerLayout.jsx';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -8,6 +10,14 @@ export default function Navbar() {
   const location = useLocation();
 
   if (user?.role === 'ADMIN' && isAdminPortalRoute(location.pathname)) {
+    return null;
+  }
+
+  if (user?.role === 'TRAINEE' && isTraineePortalRoute(location.pathname)) {
+    return null;
+  }
+
+  if (user?.role === 'TRAINER' && isTrainerPortalRoute(location.pathname)) {
     return null;
   }
 
@@ -21,7 +31,8 @@ export default function Navbar() {
       <nav className="navbar" aria-label="Main navigation">
         <div className="navbar-inner">
           <Link to="/" className="navbar-brand">
-            CAPSERA
+            <CapseraCubeLogo />
+            <span>CAPSERA</span>
           </Link>
 
           <div className="navbar-links">
@@ -46,7 +57,8 @@ export default function Navbar() {
     <nav className="navbar" aria-label="Main navigation">
       <div className="navbar-inner">
         <Link to="/" className="navbar-brand">
-          CAPSERA
+          <CapseraCubeLogo />
+          <span>CAPSERA</span>
         </Link>
 
         <div className="navbar-links">

@@ -10,6 +10,7 @@ import {
   listResources,
   deleteResource,
 } from './coursesApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 import ResourceUploadModal from './ResourceUploadModal.jsx';
 
 export default function ManageLessonsPage() {
@@ -237,7 +238,10 @@ export default function ManageLessonsPage() {
           </div>
 
           <div className="header-stats-pill">
-            <span>📚 {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'} total</span>
+            <span className="ui-inline">
+              <UiIcon name="book-open" size={15} />
+              {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'} total
+            </span>
           </div>
         </div>
       </header>
@@ -245,7 +249,9 @@ export default function ManageLessonsPage() {
       {/* Notifications */}
       {error && (
         <div className="form-alert alert-error" role="alert">
-          <span className="alert-icon" aria-hidden="true">⚠️</span>
+          <span className="alert-icon" aria-hidden="true">
+            <UiIcon name="alert-triangle" size={18} />
+          </span>
           <div className="alert-body">
             <strong>Error:</strong> {error}
           </div>
@@ -254,7 +260,9 @@ export default function ManageLessonsPage() {
 
       {successMsg && (
         <div className="form-alert alert-success" role="status">
-          <span className="alert-icon" aria-hidden="true">✓</span>
+          <span className="alert-icon" aria-hidden="true">
+            <UiIcon name="check-circle" size={18} />
+          </span>
           <div className="alert-body">{successMsg}</div>
         </div>
       )}
@@ -286,7 +294,7 @@ export default function ManageLessonsPage() {
                       aria-label={`Move lesson ${idx + 1} up`}
                       title="Move up"
                     >
-                      ▲
+                      <UiIcon name="chevron-up" size={14} />
                     </button>
                     <button
                       type="button"
@@ -296,7 +304,7 @@ export default function ManageLessonsPage() {
                       aria-label={`Move lesson ${idx + 1} down`}
                       title="Move down"
                     >
-                      ▼
+                      <UiIcon name="chevron-down" size={14} />
                     </button>
                   </div>
                 </div>
@@ -305,8 +313,9 @@ export default function ManageLessonsPage() {
                   <div className="lesson-title-row">
                     <h3 className="lesson-item-title">{lesson.title}</h3>
                     {lesson.estimatedDurationMinutes && (
-                      <span className="lesson-duration-badge">
-                        ⏱ {lesson.estimatedDurationMinutes} mins
+                      <span className="lesson-duration-badge ui-inline">
+                        <UiIcon name="clock" size={13} />
+                        {lesson.estimatedDurationMinutes} mins
                       </span>
                     )}
                   </div>
@@ -323,20 +332,22 @@ export default function ManageLessonsPage() {
                 <div className="lesson-item-actions">
                   <button
                     type="button"
-                    className="btn btn-sm btn-secondary"
+                    className="btn btn-sm btn-secondary ui-inline"
                     onClick={() => handleStartEdit(lesson)}
                     aria-label={`Edit ${lesson.title}`}
                   >
-                    ✏ Edit
+                    <UiIcon name="edit" size={14} />
+                    Edit
                   </button>
                   <Link
                     to={`/courses/${courseId}/lessons/${lesson.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn btn-sm btn-secondary"
+                    className="btn btn-sm btn-secondary ui-inline"
                     title="View in Lesson Viewer"
                   >
-                    Preview ↗
+                    Preview
+                    <UiIcon name="external-link" size={13} />
                   </Link>
                   <button
                     type="button"
@@ -525,9 +536,10 @@ export default function ManageLessonsPage() {
                         href={res.externalUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="btn btn-sm btn-secondary"
+                        className="btn btn-sm btn-secondary ui-inline"
                       >
-                        Visit Link ↗
+                        Visit Link
+                        <UiIcon name="external-link" size={13} />
                       </a>
                     ) : (
                       <a

@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getCourseById, enrollInCourse, getMyEnrollments } from './coursesApi.js';
 import { listAssessmentsByCourse } from '../assessments/assessmentsApi.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export default function CourseDetailPage() {
   const { courseId } = useParams();
@@ -243,8 +244,9 @@ export default function CourseDetailPage() {
                         )}
                       </h3>
                       {lesson.estimatedDurationMinutes && (
-                        <span className="courses-lesson-duration">
-                          ⏱ {lesson.estimatedDurationMinutes} mins
+                        <span className="courses-lesson-duration ui-inline">
+                          <UiIcon name="clock" size={14} />
+                          {lesson.estimatedDurationMinutes} mins
                         </span>
                       )}
                     </div>
@@ -263,10 +265,15 @@ export default function CourseDetailPage() {
               </ol>
             ) : (
               <div className="courses-curriculum-locked">
-                <p>
-                  {isTrainee && !enrollment
-                    ? '🔒 Enroll in this course to access the ordered lessons and learning resources.'
-                    : 'No lessons published yet for this course.'}
+                <p className="ui-inline">
+                  {isTrainee && !enrollment ? (
+                    <>
+                      <UiIcon name="lock" size={15} />
+                      Enroll in this course to access the ordered lessons and learning resources.
+                    </>
+                  ) : (
+                    'No lessons published yet for this course.'
+                  )}
                 </p>
               </div>
             )}
@@ -311,9 +318,14 @@ export default function CourseDetailPage() {
                       </h3>
                       <span className="courses-lesson-duration">
                         Passing score: {assessment.passPercentage ?? assessment.passingScore}%
-                        {assessment.durationMinutes || assessment.timeLimitMinutes
-                          ? ` • ⏱ ${assessment.durationMinutes || assessment.timeLimitMinutes} mins`
-                          : ' • No time limit'}
+                        {assessment.durationMinutes || assessment.timeLimitMinutes ? (
+                          <span className="ui-inline" style={{ marginLeft: '0.45rem' }}>
+                            <UiIcon name="clock" size={13} />
+                            {assessment.durationMinutes || assessment.timeLimitMinutes} mins
+                          </span>
+                        ) : (
+                          ' • No time limit'
+                        )}
                       </span>
                     </div>
 
@@ -338,10 +350,15 @@ export default function CourseDetailPage() {
               </ul>
             ) : (
               <div className="courses-curriculum-locked">
-                <p>
-                  {isTrainee && !enrollment
-                    ? '🔒 Enroll in this course to access assessments and quizzes.'
-                    : 'No published assessments for this course yet.'}
+                <p className="ui-inline">
+                  {isTrainee && !enrollment ? (
+                    <>
+                      <UiIcon name="lock" size={15} />
+                      Enroll in this course to access assessments and quizzes.
+                    </>
+                  ) : (
+                    'No published assessments for this course yet.'
+                  )}
                 </p>
               </div>
             )}
@@ -382,8 +399,11 @@ export default function CourseDetailPage() {
 
             <div className="courses-action-card-body">
               {enrollSuccess && (
-                <div className="courses-banner courses-banner-success" role="status">
-                  ✓ Successfully enrolled in <strong>{course.title}</strong>!
+                <div className="courses-banner courses-banner-success ui-inline" role="status">
+                  <UiIcon name="check-circle" size={16} />
+                  <span>
+                    Successfully enrolled in <strong>{course.title}</strong>!
+                  </span>
                 </div>
               )}
 
@@ -398,7 +418,10 @@ export default function CourseDetailPage() {
                 enrollment ? (
                   <div className="courses-enrolled-actions">
                     <div className="courses-enrolled-status">
-                      <span className="courses-badge-enrolled">✓ Enrolled</span>
+                      <span className="courses-badge-enrolled ui-inline">
+                        <UiIcon name="check" size={14} />
+                        Enrolled
+                      </span>
                     </div>
                     {firstLessonId ? (
                       <Link

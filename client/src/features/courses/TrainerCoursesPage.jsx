@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { listCourses } from './coursesApi.js';
+import UiIcon from '../../components/UiIcon.jsx';
 
 export default function TrainerCoursesPage() {
   const { user } = useAuth();
@@ -208,8 +209,9 @@ export default function TrainerCoursesPage() {
                 <article key={course.id} className="trainer-course-card">
                   <header className="card-top-header">
                     <span className={`badge ${statusClass}`}>{course.status}</span>
-                    <span className="card-lesson-count">
-                      📚 {course.lessonCount ?? 0} {course.lessonCount === 1 ? 'lesson' : 'lessons'}
+                    <span className="card-lesson-count ui-inline">
+                      <UiIcon name="book-open" size={14} />
+                      {course.lessonCount ?? 0} {course.lessonCount === 1 ? 'lesson' : 'lessons'}
                     </span>
                   </header>
 
@@ -240,10 +242,11 @@ export default function TrainerCoursesPage() {
                     </Link>
                     <Link
                       to={`/courses/${course.id}`}
-                      className="btn btn-sm btn-secondary"
+                      className="btn btn-sm btn-secondary ui-inline"
                       title="View student public page"
                     >
-                      Preview ↗
+                      Preview
+                      <UiIcon name="external-link" size={14} />
                     </Link>
                   </footer>
                 </article>

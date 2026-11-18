@@ -110,7 +110,6 @@
   font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.25;
-  transition: background-color 0.14s ease, color 0.14s ease;
 }
 
 .admin-sidebar-link:hover {

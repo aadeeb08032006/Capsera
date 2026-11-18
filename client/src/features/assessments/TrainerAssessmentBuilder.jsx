@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext.jsx';
+import { listCourses } from '../courses/coursesApi.js';
 import {
   listAssessmentsByCourse,
   createAssessment,
@@ -11,14 +13,31 @@ import {
   updateQuestion,
   deleteQuestion,
 } from './assessmentsApi.js';
+import {
+  buildCourseListQueryForRole,
+  resolveCourseSelection,
+} from './assessmentHelpers.js';
+import UiIcon from '../../components/UiIcon.jsx';
 import './assessments.css';
 
 export default function TrainerAssessmentBuilder() {
   const { courseId: routeCourseId } = useParams();
-  const [courseId, setCourseId] = useState(routeCourseId || '1');
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [selectedCourseId, setSelectedCourseId] = useState(
+    routeCourseId ? String(routeCourseId).trim() : '',
+  );
+  const courseId = resolveCourseSelection({
+    routeCourseId,
+    selectedCourseId,
+  });
+
+  const [ownedCourses, setOwnedCourses] = useState([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+  const [coursesError, setCoursesError] = useState(null);
 
   const [assessments, setAssessments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(courseId));
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
@@ -54,12 +73,51 @@ export default function TrainerAssessmentBuilder() {
     questionOrder: '',
   });
 
-  // Load assessments for course
+  // Sync courseId state with route parameter changes
   useEffect(() => {
+    setSelectedCourseId(routeCourseId ? String(routeCourseId).trim() : '');
+    setActiveAssessmentId(null);
+    setQuestions([]);
+  }, [routeCourseId]);
+
+  // Load owned courses (for TRAINER) or platform courses (for ADMIN)
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setLoadingCourses(true);
+    setCoursesError(null);
+
+    listCourses(buildCourseListQueryForRole(user?.role), { signal: controller.signal })
+      .then((res) => {
+        if (!active) return;
+        setOwnedCourses(Array.isArray(res?.items) ? res.items : []);
+        setLoadingCourses(false);
+      })
+      .catch((err) => {
+        if (!active || err.name === 'AbortError') return;
+        setCoursesError(err.message || 'Failed to load courses.');
+        setLoadingCourses(false);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [user?.role]);
+
+  // Load assessments for course when a course ID is selected
+  useEffect(() => {
+    if (!courseId) {
+      setAssessments([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     loadAssessments();
   }, [courseId]);
 
   async function loadAssessments() {
+    if (!courseId) return;
     setLoading(true);
     setError(null);
     try {
@@ -69,6 +127,20 @@ export default function TrainerAssessmentBuilder() {
       setError(err.message || 'Failed to load assessments');
     } finally {
       setLoading(false);
+    }
+  }
+
+  function handleCourseSelect(nextCourseId) {
+    const normalized = String(nextCourseId || '').trim();
+    setSelectedCourseId(normalized);
+    setActiveAssessmentId(null);
+    setQuestions([]);
+    setSuccessMsg(null);
+    setError(null);
+    if (normalized) {
+      navigate(`/courses/${normalized}/assessments/manage`);
+    } else {
+      navigate('/assessments/manage');
     }
   }
 
@@ -290,55 +362,122 @@ export default function TrainerAssessmentBuilder() {
           <p>Author and publish MCQs, manage pass thresholds, and review student evaluations.</p>
         </div>
         <div className="assessment-nav-actions">
-          <Link to={`/courses/${courseId}/assessments/results`} className="btn btn-secondary">
-            📊 View Student Results & Analytics
+          <Link
+            to={courseId ? `/courses/${courseId}/assessments/results` : '/assessments/results'}
+            className="btn btn-secondary ui-inline"
+          >
+            <UiIcon name="bar-chart" size={16} />
+            View Student Results & Analytics
           </Link>
-          <button onClick={openCreateAssessmentModal} className="btn btn-primary">
+          <button
+            type="button"
+            onClick={openCreateAssessmentModal}
+            className="btn btn-primary"
+            disabled={!courseId}
+          >
             + Create New Assessment
           </button>
         </div>
       </div>
 
       {/* Course Selector Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <label htmlFor="course-id-input" style={{ fontWeight: 600, fontSize: '0.9rem', color: '#475569' }}>
-          Course ID:
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        <label htmlFor="course-selector" style={{ fontWeight: 600, fontSize: '0.9rem', color: '#475569' }}>
+          Course:
         </label>
-        <input
-          id="course-id-input"
-          type="text"
+        <select
+          id="course-selector"
           value={courseId}
-          onChange={(e) => setCourseId(e.target.value)}
-          style={{ width: '80px', padding: '0.35rem 0.5rem', borderRadius: '0.375rem', border: '1px solid #cbd5e1' }}
-        />
-        <button onClick={loadAssessments} className="btn btn-secondary btn-sm">
-          Load Course
-        </button>
+          onChange={(e) => handleCourseSelect(e.target.value)}
+          disabled={loadingCourses}
+          style={{ minWidth: '260px', maxWidth: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.375rem', border: '1px solid #cbd5e1', background: '#ffffff', fontSize: '0.9rem' }}
+        >
+          <option value="">
+            {loadingCourses
+              ? 'Loading your courses...'
+              : ownedCourses.length === 0
+                ? 'No courses available'
+                : 'Select a course...'}
+          </option>
+          {courseId && !ownedCourses.some((c) => String(c.id) === String(courseId)) && (
+            <option value={courseId}>Course #{courseId}</option>
+          )}
+          {ownedCourses.map((course) => (
+            <option key={course.id} value={String(course.id)}>
+              {course.title} ({course.status}) — #{course.id}
+            </option>
+          ))}
+        </select>
+        {courseId && (
+          <button type="button" onClick={loadAssessments} className="btn btn-secondary btn-sm ui-inline">
+            <UiIcon name="refresh" size={14} />
+            Refresh
+          </button>
+        )}
+        <Link to="/trainer/courses" className="btn btn-secondary btn-sm">
+          My Courses
+        </Link>
       </div>
 
       {/* Notifications */}
+      {coursesError && (
+        <div className="assessment-banner assessment-banner-error" role="alert">
+          <UiIcon name="alert-triangle" size={17} />
+          <span>{coursesError}</span>
+        </div>
+      )}
       {error && (
         <div className="assessment-banner assessment-banner-error" role="alert">
-          <span>⚠️</span>
+          <UiIcon name="alert-triangle" size={17} />
           <span>{error}</span>
         </div>
       )}
       {successMsg && (
         <div className="assessment-banner assessment-banner-success" role="status">
-          <span>✅</span>
+          <UiIcon name="check-circle" size={17} />
           <span>{successMsg}</span>
         </div>
       )}
 
+      {/* No Course Selected Prompt */}
+      {!courseId && !loading && (
+        <div style={{ textAlign: 'center', padding: '3.5rem', background: '#ffffff', borderRadius: '0.75rem', border: '1px dashed #cbd5e1' }}>
+          <h3 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>
+            {loadingCourses
+              ? 'Loading Courses...'
+              : ownedCourses.length === 0
+                ? 'No Owned Courses Found'
+                : 'Select a Course to Manage Assessments'}
+          </h3>
+          <p style={{ color: '#64748b', margin: '0 0 1.25rem' }}>
+            {loadingCourses
+              ? 'Fetching the courses assigned to your workspace.'
+              : ownedCourses.length === 0
+                ? 'Create a course first before authoring quizzes and exams.'
+                : 'Choose a course from the Course selector above or navigate from My Courses.'}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <Link to="/trainer/courses" className="btn btn-secondary">
+              Go to My Courses
+            </Link>
+            {!loadingCourses && ownedCourses.length === 0 && (
+              <Link to="/trainer/courses/new" className="btn btn-primary">
+                + Create New Course
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Loading Indicator */}
-      {loading && (
+      {courseId && loading && (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
           Loading course assessments...
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && assessments.length === 0 && (
+      {courseId && !loading && !error && assessments.length === 0 && (
         <div style={{ textAlign: 'center', padding: '3.5rem', background: '#ffffff', borderRadius: '0.75rem', border: '1px dashed #cbd5e1' }}>
           <h3 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>No Assessments Found</h3>
           <p style={{ color: '#64748b', margin: '0 0 1.25rem' }}>
@@ -373,11 +512,26 @@ export default function TrainerAssessmentBuilder() {
                 </div>
 
                 <div className="assessment-meta-chips">
-                  <span>⏱️ {assessment.durationMinutes ? `${assessment.durationMinutes} mins` : 'No time limit'}</span>
-                  <span>📅 {assessment.deadlineAt ? new Date(assessment.deadlineAt).toLocaleString() : 'No deadline'}</span>
-                  <span>🎯 Pass mark: {assessment.passPercentage}%</span>
-                  <span>🔄 Max attempts: {assessment.maxAttempts}</span>
-                  <span>❓ {assessment.questionCount || 0} questions ({assessment.totalPoints || 0} pts)</span>
+                  <span className="ui-inline">
+                    <UiIcon name="clock" size={14} />
+                    {assessment.durationMinutes ? `${assessment.durationMinutes} mins` : 'No time limit'}
+                  </span>
+                  <span className="ui-inline">
+                    <UiIcon name="calendar" size={14} />
+                    {assessment.deadlineAt ? new Date(assessment.deadlineAt).toLocaleString() : 'No deadline'}
+                  </span>
+                  <span className="ui-inline">
+                    <UiIcon name="target" size={14} />
+                    Pass mark: {assessment.passPercentage}%
+                  </span>
+                  <span className="ui-inline">
+                    <UiIcon name="refresh" size={14} />
+                    Max attempts: {assessment.maxAttempts}
+                  </span>
+                  <span className="ui-inline">
+                    <UiIcon name="help-circle" size={14} />
+                    {assessment.questionCount || 0} questions ({assessment.totalPoints || 0} pts)
+                  </span>
                 </div>
 
                 {assessment.instructions && (
@@ -389,9 +543,10 @@ export default function TrainerAssessmentBuilder() {
                 <div className="assessment-item-actions">
                   <button
                     onClick={() => toggleQuestionManager(assessment.id)}
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-secondary btn-sm ui-inline"
                   >
-                    {isSelected ? '▲ Hide Questions' : '▼ Manage Questions (' + (assessment.questionCount || 0) + ')'}
+                    <UiIcon name={isSelected ? 'chevron-up' : 'chevron-down'} size={14} />
+                    {isSelected ? 'Hide Questions' : `Manage Questions (${assessment.questionCount || 0})`}
                   </button>
 
                   {assessment.status === 'DRAFT' && (
@@ -399,22 +554,24 @@ export default function TrainerAssessmentBuilder() {
                       onClick={() => handlePublishAssessment(assessment.id)}
                       className="btn btn-success btn-sm"
                     >
-                      🚀 Publish Quiz
+                      Publish Quiz
                     </button>
                   )}
 
                   <button
                     onClick={() => openEditAssessmentModal(assessment)}
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-secondary btn-sm ui-inline"
                   >
-                    ✏️ Edit Details
+                    <UiIcon name="edit" size={14} />
+                    Edit Details
                   </button>
 
                   <button
                     onClick={() => handleDeleteAssessment(assessment.id)}
-                    className="btn btn-outline-danger btn-sm"
+                    className="btn btn-outline-danger btn-sm ui-inline"
                   >
-                    🗑️ Delete
+                    <UiIcon name="trash" size={14} />
+                    Delete
                   </button>
                 </div>
 
@@ -456,17 +613,21 @@ export default function TrainerAssessmentBuilder() {
                             </div>
 
                             <div className="question-options-grid">
-                              <div className={`question-option-box ${q.correctOption === 'A' ? 'question-option-correct' : ''}`}>
-                                A. {q.optionA} {q.correctOption === 'A' && '✓'}
+                              <div className={`question-option-box ui-inline ${q.correctOption === 'A' ? 'question-option-correct' : ''}`}>
+                                <span>A. {q.optionA}</span>
+                                {q.correctOption === 'A' && <UiIcon name="check" size={14} />}
                               </div>
-                              <div className={`question-option-box ${q.correctOption === 'B' ? 'question-option-correct' : ''}`}>
-                                B. {q.optionB} {q.correctOption === 'B' && '✓'}
+                              <div className={`question-option-box ui-inline ${q.correctOption === 'B' ? 'question-option-correct' : ''}`}>
+                                <span>B. {q.optionB}</span>
+                                {q.correctOption === 'B' && <UiIcon name="check" size={14} />}
                               </div>
-                              <div className={`question-option-box ${q.correctOption === 'C' ? 'question-option-correct' : ''}`}>
-                                C. {q.optionC} {q.correctOption === 'C' && '✓'}
+                              <div className={`question-option-box ui-inline ${q.correctOption === 'C' ? 'question-option-correct' : ''}`}>
+                                <span>C. {q.optionC}</span>
+                                {q.correctOption === 'C' && <UiIcon name="check" size={14} />}
                               </div>
-                              <div className={`question-option-box ${q.correctOption === 'D' ? 'question-option-correct' : ''}`}>
-                                D. {q.optionD} {q.correctOption === 'D' && '✓'}
+                              <div className={`question-option-box ui-inline ${q.correctOption === 'D' ? 'question-option-correct' : ''}`}>
+                                <span>D. {q.optionD}</span>
+                                {q.correctOption === 'D' && <UiIcon name="check" size={14} />}
                               </div>
                             </div>
 
@@ -493,7 +654,14 @@ export default function TrainerAssessmentBuilder() {
           <div className="assessment-modal" onClick={(e) => e.stopPropagation()}>
             <div className="assessment-modal-header">
               <h2>{editingAssessment ? 'Edit Assessment' : 'Create New Assessment'}</h2>
-              <button onClick={() => setShowAssessmentModal(false)} className="btn btn-secondary btn-sm">✕</button>
+              <button
+                type="button"
+                onClick={() => setShowAssessmentModal(false)}
+                className="btn btn-secondary btn-sm"
+                aria-label="Close modal"
+              >
+                <UiIcon name="x" size={15} />
+              </button>
             </div>
 
             <form onSubmit={handleSaveAssessment}>
@@ -598,7 +766,14 @@ export default function TrainerAssessmentBuilder() {
           <div className="assessment-modal" onClick={(e) => e.stopPropagation()}>
             <div className="assessment-modal-header">
               <h2>{editingQuestion ? 'Edit MCQ Question' : 'Add MCQ Question'}</h2>
-              <button onClick={() => setShowQuestionModal(false)} className="btn btn-secondary btn-sm">✕</button>
+              <button
+                type="button"
+                onClick={() => setShowQuestionModal(false)}
+                className="btn btn-secondary btn-sm"
+                aria-label="Close modal"
+              >
+                <UiIcon name="x" size={15} />
+              </button>
             </div>
 
             <form onSubmit={handleSaveQuestion}>

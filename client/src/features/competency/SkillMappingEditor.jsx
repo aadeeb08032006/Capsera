@@ -1,77 +1,18 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import ProficiencySelect from './ProficiencySelect.jsx';
+import {
+  areSkillListsEqual,
+  buildSkillSavePayload,
+  DEFAULT_PROFICIENCY,
+  evaluateConfirmClearAction,
+  evaluateSaveAction,
+  normalizeMode,
+  syncPersistedSkillRows,
+  toDraftRow,
+  validateDraftRows,
+  validateYearsOfExperience,
+} from './skillMappingEditorLogic.js';
 import './competency.css';
-
-const DEFAULT_PROFICIENCY = 2;
-
-function normalizeMode(mode) {
-  return String(mode).toLowerCase() === 'trainer' ? 'trainer' : 'trainee';
-}
-
-function toDraftRow(item, isTrainer) {
-  const skillId = String(item.skillId);
-  const proficiency = Number(item.proficiency);
-  const years =
-    isTrainer && item.yearsOfExperience !== undefined && item.yearsOfExperience !== null
-      ? String(item.yearsOfExperience)
-      : '0';
-
-  return {
-    skillId,
-    skillName: item.skillName || item.name || `Skill #${skillId}`,
-    category: item.category || '',
-    proficiency: Number.isInteger(proficiency) && proficiency >= 1 && proficiency <= 4
-      ? proficiency
-      : DEFAULT_PROFICIENCY,
-    yearsOfExperienceInput: years,
-  };
-}
-
-function validateYearsOfExperience(rawInput) {
-  const trimmed = String(rawInput ?? '').trim();
-  if (trimmed === '') {
-    return { valid: false, message: 'Enter years of experience (0–80).' };
-  }
-  const num = Number(trimmed);
-  if (!Number.isFinite(num) || num < 0 || num > 80) {
-    return { valid: false, message: 'Years of experience must be between 0 and 80.' };
-  }
-  if (Math.abs(Math.round(num * 10) - num * 10) >= 1e-12) {
-    return { valid: false, message: 'Use at most 1 decimal place (e.g. 2.5).' };
-  }
-  return { valid: true, value: num };
-}
-
-function validateDraftRows(rows, isTrainer) {
-  const rowErrors = {};
-  const seenSkillIds = new Set();
-
-  for (const row of rows) {
-    const errorsForRow = {};
-
-    if (!row.skillId || seenSkillIds.has(row.skillId)) {
-      errorsForRow.skillId = 'Duplicate skill selected.';
-    }
-    seenSkillIds.add(row.skillId);
-
-    if (!Number.isInteger(row.proficiency) || row.proficiency < 1 || row.proficiency > 4) {
-      errorsForRow.proficiency = 'Proficiency must be an integer between 1 and 4.';
-    }
-
-    if (isTrainer) {
-      const yearsResult = validateYearsOfExperience(row.yearsOfExperienceInput);
-      if (!yearsResult.valid) {
-        errorsForRow.yearsOfExperience = yearsResult.message;
-      }
-    }
-
-    if (Object.keys(errorsForRow).length > 0) {
-      rowErrors[row.skillId] = errorsForRow;
-    }
-  }
-
-  return rowErrors;
-}
 
 /**
  * Reusable skill mapping editor for TRAINEE and TRAINER profiles.
@@ -109,10 +50,12 @@ export default function SkillMappingEditor({
   const headingId = useId();
   const addSkillSelectId = useId();
 
+  const [persistedSkills, setPersistedSkills] = useState(() =>
+    (initialSkills || []).map((item) => toDraftRow(item, isTrainer)),
+  );
   const [draftSkills, setDraftSkills] = useState(() =>
     (initialSkills || []).map((item) => toDraftRow(item, isTrainer)),
   );
-  const [isDirty, setIsDirty] = useState(false);
   const [selectedNewSkillId, setSelectedNewSkillId] = useState('');
   const [newProficiency, setNewProficiency] = useState(DEFAULT_PROFICIENCY);
   const [newYearsInput, setNewYearsInput] = useState('0');
@@ -123,22 +66,27 @@ export default function SkillMappingEditor({
   const lastSyncedInitialRef = useRef(initialSkills);
   const lastModeRef = useRef(normalizedMode);
 
+  const hasUnsavedChanges = useMemo(
+    () => !areSkillListsEqual(draftSkills, persistedSkills, isTrainer),
+    [draftSkills, persistedSkills, isTrainer],
+  );
+  const hasSavedMappings = persistedSkills.length > 0;
+
   useEffect(() => {
     const modeChanged = lastModeRef.current !== normalizedMode;
     const initialChanged = lastSyncedInitialRef.current !== initialSkills;
 
-    if (modeChanged || (!isDirty && initialChanged && !isLoading)) {
-      setDraftSkills((initialSkills || []).map((item) => toDraftRow(item, isTrainer)));
+    if (modeChanged || (!hasUnsavedChanges && initialChanged && !isLoading)) {
+      const nextRows = (initialSkills || []).map((item) => toDraftRow(item, isTrainer));
+      setPersistedSkills(nextRows);
+      setDraftSkills(nextRows);
       setRowErrors({});
       setAddError(null);
       setConfirmClearOpen(false);
-      if (modeChanged) {
-        setIsDirty(false);
-      }
       lastSyncedInitialRef.current = initialSkills;
       lastModeRef.current = normalizedMode;
     }
-  }, [initialSkills, isDirty, isLoading, isTrainer, normalizedMode]);
+  }, [hasUnsavedChanges, initialSkills, isLoading, isTrainer, normalizedMode]);
 
   const selectedIds = useMemo(
     () => new Set(draftSkills.map((item) => item.skillId)),
@@ -152,7 +100,7 @@ export default function SkillMappingEditor({
   );
 
   const controlsDisabled = disabled || isLoading || isSaving || Boolean(loadError);
-  const canSave = !controlsDisabled && typeof onSave === 'function';
+  const canSave = !controlsDisabled && hasUnsavedChanges && typeof onSave === 'function';
 
   function handleAddSkill(event) {
     event.preventDefault();
@@ -201,7 +149,6 @@ export default function SkillMappingEditor({
         yearsOfExperienceInput: isTrainer ? String(newYearsInput).trim() : '0',
       },
     ]);
-    setIsDirty(true);
     setSelectedNewSkillId('');
     setNewProficiency(DEFAULT_PROFICIENCY);
     setNewYearsInput('0');
@@ -224,7 +171,6 @@ export default function SkillMappingEditor({
       }
       return next;
     });
-    setIsDirty(true);
   }
 
   function handleYearsChange(skillId, rawValue) {
@@ -244,7 +190,6 @@ export default function SkillMappingEditor({
       }
       return next;
     });
-    setIsDirty(true);
   }
 
   function handleRemoveSkill(skillId) {
@@ -256,34 +201,31 @@ export default function SkillMappingEditor({
       return next;
     });
     setConfirmClearOpen(false);
-    setIsDirty(true);
   }
 
   async function submitValidatedPayload() {
+    if (!canSave) return;
+
     const errors = validateDraftRows(draftSkills, isTrainer);
     setRowErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
     }
 
-    const payload = draftSkills.map((row) =>
-      isTrainer
-        ? {
-            skillId: row.skillId,
-            proficiency: row.proficiency,
-            yearsOfExperience: Number(String(row.yearsOfExperienceInput).trim()),
-          }
-        : {
-            skillId: row.skillId,
-            proficiency: row.proficiency,
-          },
-    );
+    const payload = buildSkillSavePayload(draftSkills, isTrainer);
 
     try {
       const result = await onSave(payload);
       if (result !== false) {
+        const nextPersistedRows = syncPersistedSkillRows(
+          result,
+          payload,
+          draftSkills,
+          isTrainer,
+        );
+        setPersistedSkills(nextPersistedRows);
+        setDraftSkills(nextPersistedRows);
         setConfirmClearOpen(false);
-        setIsDirty(false);
       }
     } catch {
       // Preserve unsaved edits; parent displays error via saveError prop.
@@ -291,14 +233,38 @@ export default function SkillMappingEditor({
   }
 
   function handleSaveClick() {
-    if (!canSave) return;
+    const action = evaluateSaveAction({
+      draftCount: draftSkills.length,
+      persistedCount: persistedSkills.length,
+      hasUnsavedChanges,
+      confirmClearOpen,
+      controlsDisabled,
+      hasOnSave: typeof onSave === 'function',
+    });
 
-    if (draftSkills.length === 0 && !confirmClearOpen) {
+    if (action === 'OPEN_CONFIRM') {
       setConfirmClearOpen(true);
       return;
     }
 
-    void submitValidatedPayload();
+    if (action === 'SUBMIT') {
+      void submitValidatedPayload();
+    }
+  }
+
+  function handleConfirmClearClick() {
+    const action = evaluateConfirmClearAction({
+      draftCount: draftSkills.length,
+      persistedCount: persistedSkills.length,
+      hasUnsavedChanges,
+      confirmClearOpen,
+      controlsDisabled,
+      hasOnSave: typeof onSave === 'function',
+    });
+
+    if (action === 'SUBMIT') {
+      void submitValidatedPayload();
+    }
   }
 
   const defaultTitle = isTrainer ? 'Trainer Expertise Mapping' : 'My Skill Mapping';
@@ -315,7 +281,7 @@ export default function SkillMappingEditor({
           </h2>
           <p className="competency-subtitle">{description || defaultDescription}</p>
         </div>
-        {isDirty && !isLoading && (
+        {hasUnsavedChanges && !isLoading && (
           <span className="competency-badge-unsaved" role="status">
             Unsaved changes
           </span>
@@ -421,7 +387,11 @@ export default function SkillMappingEditor({
 
       {draftSkills.length === 0 ? (
         <div className="competency-empty-state">
-          <p>No skills currently mapped. Add skills above or save an empty list to clear all.</p>
+          <p>
+            {hasSavedMappings
+              ? 'No skills currently selected. Add skills above or click Save Skill Mappings to review clearing your saved mappings.'
+              : 'No skills currently mapped. Select a skill above to add it to your profile.'}
+          </p>
         </div>
       ) : (
         <div className="competency-table-wrap">
@@ -513,7 +483,7 @@ export default function SkillMappingEditor({
             <button
               type="button"
               className="competency-btn competency-btn-danger"
-              onClick={() => void submitValidatedPayload()}
+              onClick={handleConfirmClearClick}
               disabled={!canSave}
             >
               {isSaving ? 'Saving...' : 'Confirm Clear & Save'}

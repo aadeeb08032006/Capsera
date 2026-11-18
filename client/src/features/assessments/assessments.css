@@ -1087,3 +1087,115 @@
   flex-wrap: wrap;
 }
 
+/* ==========================================================================
+   CAPSERA Design System Integration (Blue #365CF5 + Lime #CBF36B)
+   ========================================================================== */
+
+.assessment-page-header {
+  border-bottom-color: #e5e7eb;
+  margin-bottom: 1.35rem;
+  padding-bottom: 1rem;
+}
+
+.assessment-header-info h1 {
+  color: #18202f;
+  font-size: 1.48rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.assessment-header-info p {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.assessment-nav-actions {
+  flex-wrap: wrap;
+}
+
+.assessment-container .btn-primary {
+  background-color: #365cf5;
+  border-color: #365cf5;
+  color: #ffffff;
+}
+
+.assessment-container .btn-primary:hover:not(:disabled) {
+  background-color: #294ce0;
+  border-color: #294ce0;
+}
+
+.assessment-container .btn-secondary {
+  background-color: #ffffff;
+  color: #18202f;
+  border-color: #e5e7eb;
+}
+
+.assessment-container .btn-secondary:hover:not(:disabled) {
+  background-color: #f7f8fc;
+  border-color: #cbd5e1;
+}
+
+.assessment-badge.badge-published,
+.assessment-badge.badge-passed {
+  background-color: #cbf36b;
+  color: #18202f;
+  border-color: #cbf36b;
+}
+
+.assessment-badge.badge-draft,
+.assessment-badge.badge-in-progress {
+  background-color: #eef2ff;
+  color: #365cf5;
+  border-color: #c7d2fe;
+}
+
+.metric-card,
+.assessment-item-card,
+.results-table-container,
+.scorecard-question-item {
+  border-color: #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.metric-value {
+  color: #18202f;
+}
+
+.metric-highlight-blue {
+  color: #365cf5;
+}
+
+.assessment-item-title {
+  color: #18202f;
+}
+
+.option-selected {
+  border-color: #365cf5 !important;
+  background-color: #eef2ff !important;
+  box-shadow: 0 0 0 1px #365cf5;
+}
+
+.option-selected .option-badge-circle {
+  background-color: #365cf5;
+  color: #ffffff;
+}
+
+.form-control:focus {
+  border-color: #365cf5;
+  box-shadow: 0 0 0 3px rgba(54, 92, 245, 0.14);
+}
+
+@media (max-width: 640px) {
+  .assessment-nav-actions {
+    width: 100%;
+  }
+
+  .assessment-nav-actions .btn {
+    flex: 1;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -1,4 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { DashboardIcon } from '../admin/AdminLayout.jsx';
+import TraineeLayout from '../trainee/TraineeLayout.jsx';
 import { getMyTraineeSkills, replaceMyTraineeSkills } from './competencyApi.js';
 import SkillMappingEditor from './SkillMappingEditor.jsx';
 import { useSkillMappingPage } from './useSkillMappingPage.js';
@@ -26,14 +29,51 @@ export default function TraineeSkillsPage() {
   });
 
   return (
-    <main className="competency-page">
-      <header className="competency-page-header">
-        <h1>My Skills</h1>
-        <p className="competency-subtitle">
-          Maintain your canonical skill profile and proficiency levels for course and trainer
-          matching.
-        </p>
-      </header>
+    <TraineeLayout
+      title="My Skills"
+      eyebrow="Competency Profile"
+      subtitle="Maintain your canonical skill profile and proficiency levels for course and trainer matching."
+      headerActions={
+        <div className="trainee-header-actions">
+          <Link
+            to="/trainers/recommendations"
+            className="admin-dashboard-btn admin-dashboard-btn-secondary"
+          >
+            Find Trainers
+          </Link>
+          <button
+            type="button"
+            className="admin-dashboard-btn admin-dashboard-btn-primary"
+            onClick={retryLoad}
+            disabled={isLoading || isSaving}
+          >
+            <DashboardIcon name="refresh" />
+            <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
+          </button>
+        </div>
+      }
+    >
+      <div className="trainee-skills-summary-grid" aria-label="Skill profile summary">
+        <div className="trainee-skills-stat-card">
+          <span className="trainee-skills-stat-label">Saved Skill Mappings</span>
+          <p className="trainee-skills-stat-value">{savedSkills.length}</p>
+          <p className="trainee-skills-stat-sub">Persisted on your trainee profile</p>
+        </div>
+
+        <div className="trainee-skills-stat-card">
+          <span className="trainee-skills-stat-label">Canonical Catalogue</span>
+          <p className="trainee-skills-stat-value">{availableSkills.length}</p>
+          <p className="trainee-skills-stat-sub">Available skills across platform</p>
+        </div>
+
+        <div className="trainee-skills-stat-card">
+          <span className="trainee-skills-stat-label">Proficiency Scale</span>
+          <p className="trainee-skills-stat-value">1 &ndash; 4</p>
+          <p className="trainee-skills-stat-sub">
+            1 Beginner &middot; 2 Intermediate &middot; 3 Advanced &middot; 4 Expert
+          </p>
+        </div>
+      </div>
 
       {loadError && (
         <div className="competency-banner-actions">
@@ -63,6 +103,6 @@ export default function TraineeSkillsPage() {
         saveError={saveError}
         onSave={handleSave}
       />
-    </main>
+    </TraineeLayout>
   );
 }

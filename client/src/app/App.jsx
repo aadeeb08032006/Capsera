@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { fetchApiHealth } from '../services/apiClient.js';
 import { useAuth } from '../features/auth/AuthContext.jsx';
 
@@ -15,6 +15,10 @@ import ProfilePage from '../features/profiles/ProfilePage.jsx';
 import AdminUsersPage from '../features/admin/AdminUsersPage.jsx';
 import AdminDashboardPage from '../features/admin/AdminDashboardPage.jsx';
 import AdminLayout from '../features/admin/AdminLayout.jsx';
+import TraineeLayout from '../features/trainee/TraineeLayout.jsx';
+import TraineeDashboardPage from '../features/trainee/TraineeDashboardPage.jsx';
+import TrainerLayout from '../features/trainer/TrainerLayout.jsx';
+import TrainerDashboardPage from '../features/trainer/TrainerDashboardPage.jsx';
 import AdminAnnouncementsPage from '../features/announcements/AdminAnnouncementsPage.jsx';
 import AnnouncementsFeedSection from '../features/announcements/AnnouncementsFeedSection.jsx';
 import AdminSkillsPage from '../features/competency/AdminSkillsPage.jsx';
@@ -39,7 +43,47 @@ import ManageLessonsPage from '../features/courses/ManageLessonsPage.jsx';
 
 import '../features/courses/courses.css';
 
+function RolePortalShell({ sectionLabel, roles = ['ADMIN', 'TRAINER', 'TRAINEE'], children }) {
+  const { user } = useAuth();
+  if (user?.role === 'ADMIN' && roles.includes('ADMIN')) {
+    return (
+      <AdminLayout embeddedPage sectionLabel={sectionLabel}>
+        {children}
+      </AdminLayout>
+    );
+  }
+  if (user?.role === 'TRAINER' && roles.includes('TRAINER')) {
+    return (
+      <TrainerLayout embeddedPage sectionLabel={sectionLabel}>
+        {children}
+      </TrainerLayout>
+    );
+  }
+  if (user?.role === 'TRAINEE' && roles.includes('TRAINEE')) {
+    return (
+      <TraineeLayout embeddedPage sectionLabel={sectionLabel}>
+        {children}
+      </TraineeLayout>
+    );
+  }
+  return <>{children}</>;
+}
+
 function AuthenticatedHomePage() {
+  const { user } = useAuth();
+
+  if (user?.role === 'ADMIN') {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (user?.role === 'TRAINEE') {
+    return <TraineeDashboardPage />;
+  }
+
+  if (user?.role === 'TRAINER') {
+    return <TrainerDashboardPage />;
+  }
+
   return (
     <>
       <DashboardPage />
@@ -132,15 +176,15 @@ function FoundationHomePage() {
               alignItems: 'center',
               gap: '0.4rem',
               padding: '0.6rem 1.1rem',
-              backgroundColor: '#0284c7',
+              backgroundColor: '#365CF5',
               color: '#ffffff',
               textDecoration: 'none',
               borderRadius: '0.5rem',
-              fontWeight: 500,
+              fontWeight: 600,
               fontSize: '0.9rem',
             }}
           >
-            ✏️ Trainer Quiz Builder
+            Trainer Quiz Builder
           </Link>
           <Link
             to="/courses/1/assessments/results"
@@ -149,16 +193,16 @@ function FoundationHomePage() {
               alignItems: 'center',
               gap: '0.4rem',
               padding: '0.6rem 1.1rem',
-              backgroundColor: '#f1f5f9',
-              color: '#334155',
+              backgroundColor: '#f7f8fc',
+              color: '#18202f',
               textDecoration: 'none',
               borderRadius: '0.5rem',
-              border: '1px solid #cbd5e1',
-              fontWeight: 500,
+              border: '1px solid #e5e7eb',
+              fontWeight: 600,
               fontSize: '0.9rem',
             }}
           >
-            📊 Course Results &amp; Analytics
+            Course Results &amp; Analytics
           </Link>
           <Link
             to="/courses/1/assessments/1/player"
@@ -167,15 +211,15 @@ function FoundationHomePage() {
               alignItems: 'center',
               gap: '0.4rem',
               padding: '0.6rem 1.1rem',
-              backgroundColor: '#10b981',
-              color: '#ffffff',
+              backgroundColor: '#CBF36B',
+              color: '#18202f',
               textDecoration: 'none',
               borderRadius: '0.5rem',
-              fontWeight: 500,
+              fontWeight: 600,
               fontSize: '0.9rem',
             }}
           >
-            🚀 Trainee Quiz Player
+            Trainee Quiz Player
           </Link>
           <Link
             to="/courses/1/feedback"
@@ -184,16 +228,16 @@ function FoundationHomePage() {
               alignItems: 'center',
               gap: '0.4rem',
               padding: '0.6rem 1.1rem',
-              backgroundColor: '#f8fafc',
-              color: '#d97706',
+              backgroundColor: '#ffffff',
+              color: '#18202f',
               textDecoration: 'none',
               borderRadius: '0.5rem',
-              border: '1px solid #fde68a',
-              fontWeight: 500,
+              border: '1px solid #e5e7eb',
+              fontWeight: 600,
               fontSize: '0.9rem',
             }}
           >
-            ⭐ Course Feedback &amp; Ratings
+            Course Feedback &amp; Ratings
           </Link>
         </div>
       </section>
@@ -204,8 +248,6 @@ function FoundationHomePage() {
 }
 
 export default function App() {
-  const { user } = useAuth();
-
   return (
     <>
       <Navbar />
@@ -218,7 +260,9 @@ export default function App() {
           path="/change-password"
           element={
             <ProtectedRoute>
-              <ChangePasswordPage />
+              <RolePortalShell sectionLabel="Change Password">
+                <ChangePasswordPage />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -228,7 +272,9 @@ export default function App() {
           path="/profile"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER']}>
-              <ProfilePage />
+              <RolePortalShell sectionLabel="My Profile" roles={['TRAINER', 'TRAINEE']}>
+                <ProfilePage />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -288,9 +334,7 @@ export default function App() {
           path="/trainers/recommendations"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <AdminLayout embeddedPage sectionLabel="Trainer Recommendations">
-                <TrainerRecommendationsPage coursesPath="/courses" />
-              </AdminLayout>
+              <TrainerRecommendationsPage coursesPath="/courses" />
             </ProtectedRoute>
           }
         />
@@ -306,13 +350,29 @@ export default function App() {
         <Route path="/certificates/verify/:certificateCode" element={<VerifyCertificatePage />} />
 
         {/* Member 2: Courses & Learning Resources */}
-        <Route path="/courses" element={<CourseCataloguePage />} />
-        <Route path="/courses/:courseId" element={<CourseDetailPage />} />
+        <Route
+          path="/courses"
+          element={
+            <RolePortalShell sectionLabel="Course Catalogue" roles={['TRAINEE']}>
+              <CourseCataloguePage />
+            </RolePortalShell>
+          }
+        />
+        <Route
+          path="/courses/:courseId"
+          element={
+            <RolePortalShell sectionLabel="Course Overview" roles={['TRAINEE']}>
+              <CourseDetailPage />
+            </RolePortalShell>
+          }
+        />
         <Route
           path="/courses/:courseId/lessons/:lessonId"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
-              <LessonViewerPage />
+              <RolePortalShell sectionLabel="Lesson Viewer" roles={['TRAINEE']}>
+                <LessonViewerPage />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -320,7 +380,9 @@ export default function App() {
           path="/my-learning"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE']}>
-              <MyLearningPage />
+              <TraineeLayout embeddedPage sectionLabel="My Learning">
+                <MyLearningPage />
+              </TraineeLayout>
             </ProtectedRoute>
           }
         />
@@ -328,9 +390,9 @@ export default function App() {
           path="/trainer/courses"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <AdminLayout embeddedPage sectionLabel="Course Management">
+              <RolePortalShell sectionLabel="My Courses" roles={['ADMIN', 'TRAINER']}>
                 <TrainerCoursesPage />
-              </AdminLayout>
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -338,9 +400,9 @@ export default function App() {
           path="/trainer/courses/new"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <AdminLayout embeddedPage sectionLabel="Create Course">
+              <RolePortalShell sectionLabel="Create Course" roles={['ADMIN', 'TRAINER']}>
                 <CourseFormPage />
-              </AdminLayout>
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -348,9 +410,9 @@ export default function App() {
           path="/trainer/courses/:courseId/edit"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <AdminLayout embeddedPage sectionLabel="Edit Course">
+              <RolePortalShell sectionLabel="Edit Course" roles={['ADMIN', 'TRAINER']}>
                 <CourseFormPage />
-              </AdminLayout>
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -358,9 +420,9 @@ export default function App() {
           path="/trainer/courses/:courseId/lessons"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <AdminLayout embeddedPage sectionLabel="Manage Lessons">
+              <RolePortalShell sectionLabel="Manage Lessons" roles={['ADMIN', 'TRAINER']}>
                 <ManageLessonsPage />
-              </AdminLayout>
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -370,7 +432,9 @@ export default function App() {
           path="/courses/:courseId/assessments/manage"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <TrainerAssessmentBuilder />
+              <RolePortalShell sectionLabel="Assessment Builder" roles={['ADMIN', 'TRAINER']}>
+                <TrainerAssessmentBuilder />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -378,7 +442,9 @@ export default function App() {
           path="/courses/:courseId/assessments/results"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <TrainerCourseResultsView />
+              <RolePortalShell sectionLabel="Assessment Results" roles={['ADMIN', 'TRAINER']}>
+                <TrainerCourseResultsView />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -386,7 +452,9 @@ export default function App() {
           path="/assessments/manage"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <TrainerAssessmentBuilder />
+              <RolePortalShell sectionLabel="Assessment Builder" roles={['ADMIN', 'TRAINER']}>
+                <TrainerAssessmentBuilder />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -394,7 +462,9 @@ export default function App() {
           path="/assessments/results"
           element={
             <ProtectedRoute allowedRoles={['TRAINER', 'ADMIN']}>
-              <TrainerCourseResultsView />
+              <RolePortalShell sectionLabel="Assessment Results" roles={['ADMIN', 'TRAINER']}>
+                <TrainerCourseResultsView />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -402,7 +472,9 @@ export default function App() {
           path="/courses/:courseId/assessments/:assessmentId/player"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <QuizPlayer />
+              <RolePortalShell sectionLabel="Course Assessment" roles={['TRAINEE']}>
+                <QuizPlayer />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -410,7 +482,9 @@ export default function App() {
           path="/assessments/:assessmentId/player"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <QuizPlayer />
+              <RolePortalShell sectionLabel="Course Assessment" roles={['TRAINEE']}>
+                <QuizPlayer />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -418,7 +492,9 @@ export default function App() {
           path="/courses/:courseId/feedback"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <CourseFeedbackForm />
+              <RolePortalShell sectionLabel="Course Feedback" roles={['TRAINEE']}>
+                <CourseFeedbackForm />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
@@ -426,7 +502,9 @@ export default function App() {
           path="/feedback/:courseId"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'ADMIN']}>
-              <CourseFeedbackForm />
+              <RolePortalShell sectionLabel="Course Feedback" roles={['TRAINEE']}>
+                <CourseFeedbackForm />
+              </RolePortalShell>
             </ProtectedRoute>
           }
         />
