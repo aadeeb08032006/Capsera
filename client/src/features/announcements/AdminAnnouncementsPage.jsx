@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useState } from 'react';
+import AdminLayout, { DashboardIcon } from '../admin/AdminLayout.jsx';
 import AnnouncementForm from './AnnouncementForm.jsx';
 import {
   ANNOUNCEMENT_CATEGORIES,
@@ -19,6 +20,12 @@ const STATUS_CLASS_NAMES = {
   DRAFT: 'announcement-badge-status-draft',
   PUBLISHED: 'announcement-badge-status-published',
   ARCHIVED: 'announcement-badge-status-archived',
+};
+
+const CARD_STATUS_MODIFIERS = {
+  DRAFT: 'announcement-card--draft',
+  PUBLISHED: 'announcement-card--published',
+  ARCHIVED: 'announcement-card--archived',
 };
 
 function formatDateTime(isoString) {
@@ -175,15 +182,22 @@ export default function AdminAnnouncementsPage() {
   const totalItems = pagination.totalItems ?? 0;
 
   return (
-    <main className="announcements-page">
-      <header className="announcements-page-header">
-        <h1>Manage Announcements</h1>
-        <p className="announcements-subtitle">
-          Create drafts, publish announcements to the homepage, edit active posts, or archive old
-          announcements.
-        </p>
-      </header>
-
+    <AdminLayout
+      title="Manage Announcements"
+      eyebrow="Homepage Feed & Communications"
+      subtitle="Create drafts, publish announcements to the homepage, edit active posts, or archive old announcements."
+      headerActions={
+        <button
+          type="button"
+          className="admin-dashboard-btn admin-dashboard-btn-primary"
+          onClick={() => setRefreshTick((tick) => tick + 1)}
+          disabled={isLoading}
+        >
+          <DashboardIcon name="refresh" />
+          <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
+        </button>
+      }
+    >
       {successMessage && (
         <div className="announcements-banner announcements-banner-success" role="status">
           <span>{successMessage}</span>
@@ -197,16 +211,27 @@ export default function AdminAnnouncementsPage() {
       )}
 
       <section className="announcements-card" aria-labelledby={formHeadingId}>
-        <h2 id={formHeadingId} className="announcements-title">
-          {editingAnnouncement
-            ? `Edit Announcement: ${editingAnnouncement.title}`
-            : 'Create Announcement'}
-        </h2>
-        <p className="announcements-subtitle">
-          {editingAnnouncement
-            ? 'Update fields below. Archived announcements cannot be edited or restored.'
-            : 'Save as a draft or publish immediately to the public homepage feed.'}
-        </p>
+        <div className="announcements-card-head">
+          <div>
+            <h2 id={formHeadingId} className="announcements-title">
+              {editingAnnouncement
+                ? `Edit Announcement: ${editingAnnouncement.title}`
+                : 'Create Announcement'}
+            </h2>
+            <p className="announcements-subtitle">
+              {editingAnnouncement
+                ? 'Update fields below. Archived announcements cannot be edited or restored.'
+                : 'Save as a draft or publish immediately to the public homepage feed.'}
+            </p>
+          </div>
+          <span
+            className={`announcements-mode-pill ${
+              editingAnnouncement ? 'announcements-mode-pill--editing' : ''
+            }`.trim()}
+          >
+            {editingAnnouncement ? `Editing #${editingAnnouncement.id}` : 'Authoring Studio'}
+          </span>
+        </div>
 
         <AnnouncementForm
           editingAnnouncement={editingAnnouncement}
@@ -232,6 +257,40 @@ export default function AdminAnnouncementsPage() {
           </div>
 
           <div className="announcements-filters">
+            <div
+              className="announcements-status-tabs"
+              role="group"
+              aria-label="Quick status filter"
+            >
+              <button
+                type="button"
+                className={`announcements-status-tab ${
+                  statusFilter === '' ? 'announcements-status-tab--active' : ''
+                }`.trim()}
+                onClick={() => {
+                  setStatusFilter('');
+                  setPage(1);
+                }}
+              >
+                All
+              </button>
+              {ANNOUNCEMENT_STATUSES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`announcements-status-tab ${
+                    statusFilter === item.value ? 'announcements-status-tab--active' : ''
+                  }`.trim()}
+                  onClick={() => {
+                    setStatusFilter(item.value);
+                    setPage(1);
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
             <div className="announcements-field">
               <label className="announcements-label" htmlFor={statusFilterId}>
                 Filter by Status
@@ -287,9 +346,13 @@ export default function AdminAnnouncementsPage() {
               {items.map((item) => {
                 const isArchived = item.status === 'ARCHIVED';
                 const isDraft = item.status === 'DRAFT';
+                const cardModifier = CARD_STATUS_MODIFIERS[item.status] || '';
 
                 return (
-                  <article key={String(item.id)} className="announcement-card">
+                  <article
+                    key={String(item.id)}
+                    className={`announcement-card ${cardModifier}`.trim()}
+                  >
                     <div className="announcement-card-top">
                       <h3 className="announcement-card-title">{item.title}</h3>
                       <div className="announcement-badges">
@@ -357,7 +420,11 @@ export default function AdminAnnouncementsPage() {
                     </div>
 
                     {confirmArchiveId === item.id && !isArchived && (
-                      <div className="announcements-confirm-box" role="region" aria-label="Confirm archive">
+                      <div
+                        className="announcements-confirm-box"
+                        role="region"
+                        aria-label="Confirm archive"
+                      >
                         <p className="announcements-confirm-text">
                           Archive &ldquo;{item.title}&rdquo;? It will be hidden from the public
                           homepage and cannot be restored later.
@@ -411,6 +478,6 @@ export default function AdminAnnouncementsPage() {
           </>
         )}
       </section>
-    </main>
+    </AdminLayout>
   );
 }

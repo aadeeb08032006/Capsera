@@ -122,6 +122,7 @@
   background-color: var(--adm-lime);
   color: var(--adm-text);
   font-weight: 700;
+  transition: none;
 }
 
 .admin-sidebar-link--active:hover {
@@ -1199,6 +1200,209 @@
   border: 0;
 }
 
+/* ─── Shared Admin Portal Embedded Page Integration (/admin/users, /trainer/courses, /trainers/recommendations) ─── */
+.admin-dashboard-header--compact {
+  padding: 0.78rem 1.65rem;
+}
+
+.admin-header-breadcrumb {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.admin-header-section-pill {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--adm-text);
+  letter-spacing: -0.01em;
+}
+
+.admin-portal-embedded {
+  max-width: 1320px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.25rem 1.65rem 2.25rem;
+}
+
+.admin-portal-embedded > .admin-users-page,
+.admin-portal-embedded > .courses-page-container,
+.admin-portal-embedded > .competency-page {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Scoped Blue (#365CF5) + Lime (#CBF36B) styling for User Management (/admin/users) */
+.admin-portal-embedded .admin-users-page .page-eyebrow {
+  color: var(--adm-blue);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+}
+
+.admin-portal-embedded .admin-users-page .page-header h1 {
+  color: var(--adm-text);
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.admin-portal-embedded .admin-users-page .page-header > p:last-child {
+  color: var(--adm-muted);
+  font-size: 0.84rem;
+}
+
+.admin-portal-embedded .admin-users-page .users-toolbar {
+  background-color: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: 0.75rem;
+  padding: 1.1rem 1.25rem;
+}
+
+.admin-portal-embedded .admin-users-page .page-field label,
+.admin-portal-embedded .admin-users-page .users-page-controls label {
+  color: var(--adm-text);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.admin-portal-embedded .admin-users-page .page-field input,
+.admin-portal-embedded .admin-users-page .page-field select,
+.admin-portal-embedded .admin-users-page .users-row-actions select,
+.admin-portal-embedded .admin-users-page .users-page-controls select {
+  border: 1px solid var(--adm-border);
+  border-radius: 0.5rem;
+  color: var(--adm-text);
+  font-size: 0.85rem;
+  min-height: 2.3rem;
+}
+
+.admin-portal-embedded .admin-users-page .page-field input:focus-visible,
+.admin-portal-embedded .admin-users-page .page-field select:focus-visible,
+.admin-portal-embedded .admin-users-page .users-row-actions select:focus-visible,
+.admin-portal-embedded .admin-users-page .users-page-controls select:focus-visible,
+.admin-portal-embedded .admin-users-page .users-table-scroll:focus-visible {
+  outline: 2px solid var(--adm-blue);
+  outline-offset: 2px;
+  border-color: var(--adm-blue);
+}
+
+.admin-portal-embedded .admin-users-page .users-table-scroll {
+  border: 1px solid var(--adm-border);
+  border-radius: 0.75rem;
+  background-color: var(--adm-card);
+}
+
+.admin-portal-embedded .admin-users-page .users-table th {
+  background-color: var(--adm-bg);
+  color: var(--adm-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.admin-portal-embedded .admin-users-page .users-table td {
+  color: var(--adm-text);
+  font-size: 0.84rem;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.admin-portal-embedded .admin-users-page .user-status {
+  border-radius: 999px;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.admin-portal-embedded .admin-users-page .user-status--active {
+  background-color: var(--adm-lime);
+  color: var(--adm-text);
+}
+
+.admin-portal-embedded .admin-users-page .user-status--pending {
+  background-color: var(--adm-blue-soft);
+  color: var(--adm-blue);
+}
+
+.admin-portal-embedded .admin-users-page .user-status--suspended {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+.admin-portal-embedded .admin-users-page .user-status--rejected {
+  background-color: var(--adm-border);
+  color: var(--adm-muted);
+}
+
+.admin-portal-embedded .admin-users-page .page-button {
+  border-radius: 0.48rem;
+  border-color: var(--adm-border);
+  color: var(--adm-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.admin-portal-embedded .admin-users-page .page-button:hover:not(:disabled) {
+  background-color: var(--adm-bg);
+}
+
+.admin-portal-embedded .admin-users-page .page-button--primary {
+  background-color: var(--adm-blue);
+  border-color: var(--adm-blue);
+  color: #ffffff;
+}
+
+.admin-portal-embedded .admin-users-page .page-button--primary:hover:not(:disabled) {
+  background-color: var(--adm-blue-hover);
+}
+
+.admin-portal-embedded .admin-users-page .page-success {
+  background-color: var(--adm-lime-soft);
+  border-color: var(--adm-lime);
+  color: var(--adm-text);
+  border-radius: 0.55rem;
+  font-weight: 600;
+}
+
+.admin-portal-embedded .admin-users-page .temporary-password-box {
+  background-color: var(--adm-lime-soft);
+  border-color: var(--adm-lime);
+  border-radius: 0.65rem;
+}
+
+/* Scoped Blue (#365CF5) + Lime (#CBF36B) styling for Course Management (/trainer/courses) in Admin Portal */
+.admin-portal-embedded .courses-page-container .trainer-badge {
+  background-color: var(--adm-blue-soft);
+  color: var(--adm-blue);
+}
+
+.admin-portal-embedded .courses-page-container .btn-primary {
+  background-color: var(--adm-blue);
+  border-color: var(--adm-blue);
+  color: #ffffff;
+}
+
+.admin-portal-embedded .courses-page-container .btn-primary:hover:not(:disabled) {
+  background-color: var(--adm-blue-hover);
+}
+
+.admin-portal-embedded .courses-page-container .status-tab-btn.active {
+  background-color: var(--adm-navy);
+  border-color: var(--adm-navy);
+  color: var(--adm-lime);
+}
+
+.admin-portal-embedded .courses-page-container .badge-published {
+  background-color: var(--adm-lime);
+  color: var(--adm-text);
+}
+
+.admin-portal-embedded .courses-page-container .badge-draft {
+  background-color: var(--adm-blue-soft);
+  color: var(--adm-blue);
+}
+
 /* ─── Responsive Breakpoints (1024px, 768px, 375px) ─── */
 @media (max-width: 1120px) {
   .admin-layout-shell {
@@ -1258,7 +1462,8 @@
     padding: 0.9rem 1.2rem;
   }
 
-  .admin-dashboard-page {
+  .admin-dashboard-page,
+  .admin-portal-embedded {
     padding: 1.15rem;
   }
 }
@@ -1279,7 +1484,8 @@
     padding: 0.85rem 1rem;
   }
 
-  .admin-dashboard-page {
+  .admin-dashboard-page,
+  .admin-portal-embedded {
     padding: 0.95rem 0.85rem 1.85rem;
   }
 
