@@ -68,8 +68,11 @@ export default function ManageLessonsPage() {
   };
 
   useEffect(() => {
+    setError(null);
+    setSuccessMsg(null);
     setDownloadError(null);
     setDownloadSuccess(null);
+    resetForm();
     loadData();
   }, [courseId]);
 
@@ -78,6 +81,12 @@ export default function ManageLessonsPage() {
     const timer = window.setTimeout(() => setDownloadSuccess(null), 5500);
     return () => window.clearTimeout(timer);
   }, [downloadSuccess]);
+
+  useEffect(() => {
+    if (!successMsg) return undefined;
+    const timer = window.setTimeout(() => setSuccessMsg(null), 5500);
+    return () => window.clearTimeout(timer);
+  }, [successMsg]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -250,19 +259,20 @@ export default function ManageLessonsPage() {
   return (
     <main className="courses-page-container">
       {/* Header & Navigation */}
-      <header className="manage-lessons-header">
-        <div className="form-breadcrumbs">
-          <Link to={`/trainer/courses/${courseId}/edit`}>← Back to Course Edit</Link>
-          <span aria-hidden="true"> / </span>
+      <header className="course-form-header manage-lessons-header">
+        <nav className="form-breadcrumbs" aria-label="Curriculum breadcrumb">
           <Link to="/trainer/courses">My Courses</Link>
-        </div>
+          <span aria-hidden="true">/</span>
+          <Link to={`/trainer/courses/${courseId}/edit`}>Back to Course Edit</Link>
+          <span aria-hidden="true">/</span>
+          <span>Manage Lessons</span>
+        </nav>
 
         <div className="header-content-row">
-          <div>
-            <span className="trainer-badge">Curriculum Management</span>
-            <h1>Manage Lessons: {course?.title || 'Course'}</h1>
+          <div className="form-header-copy">
+            <h1>{course?.title || 'Course'} Syllabus</h1>
             <p className="form-header-sub">
-              Add lessons, provide structured instructional content, and arrange the syllabus order.
+              Add lessons, attach study resources, and arrange syllabus order.
             </p>
           </div>
 

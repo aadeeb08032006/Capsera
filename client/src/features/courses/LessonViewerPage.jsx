@@ -339,29 +339,11 @@ export default function LessonViewerPage() {
 
         {/* Course Assessments Navigation (Member 3 Coordination) */}
         {assessments.length > 0 && (
-          <div
-            className="sidebar-assessments-section"
-            style={{
-              marginTop: '1.25rem',
-              borderTop: '1px solid #e2e8f0',
-              paddingTop: '1rem',
-              paddingLeft: '0.75rem',
-              paddingRight: '0.75rem',
-            }}
-          >
-            <h4
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: '#64748b',
-                marginBottom: '0.5rem',
-              }}
-            >
+          <div className="sidebar-assessments-section">
+            <h4 className="sidebar-section-heading">
               Assessments & Quizzes ({assessments.length})
             </h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <ul className="sidebar-assessment-list">
               {assessments.map((assessment, idx) => (
                 <li key={assessment.id}>
                   <Link
@@ -370,38 +352,14 @@ export default function LessonViewerPage() {
                         ? `/courses/${courseId}/assessments/${assessment.id}/player`
                         : `/courses/${courseId}/assessments/manage`
                     }
-                    className="sidebar-lesson-btn"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      textDecoration: 'none',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      fontSize: '0.8125rem',
-                      color: '#1e293b',
-                    }}
+                    className="sidebar-lesson-btn sidebar-assessment-link"
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-                      <span className="lesson-badge-num" style={{ minWidth: '24px' }}>Q{idx + 1}</span>
-                      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {assessment.title}
-                      </span>
+                    <span className="sidebar-assessment-title-wrap">
+                      <span className="lesson-badge-num sidebar-quiz-badge">Q{idx + 1}</span>
+                      <span className="lesson-title-text">{assessment.title}</span>
                     </span>
                     {assessment.isRequired && (
-                      <span
-                        style={{
-                          fontSize: '0.625rem',
-                          background: '#fef3c7',
-                          color: '#92400e',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontWeight: 700,
-                          flexShrink: 0,
-                        }}
-                      >
-                        Required
-                      </span>
+                      <span className="sidebar-required-pill">Required</span>
                     )}
                   </Link>
                 </li>
@@ -411,27 +369,10 @@ export default function LessonViewerPage() {
         )}
 
         {/* Course Feedback Link (Member 3 Coordination) */}
-        <div
-          className="sidebar-feedback-section"
-          style={{
-            marginTop: '1rem',
-            borderTop: '1px solid #e2e8f0',
-            paddingTop: '0.75rem',
-            paddingLeft: '0.75rem',
-            paddingRight: '0.75rem',
-          }}
-        >
+        <div className="sidebar-feedback-section">
           <Link
             to={`/courses/${courseId}/feedback`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8125rem',
-              color: '#0284c7',
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}
+            className="sidebar-feedback-link"
           >
             <UiIcon name="star" size={14} filled />
             Course Reviews & Feedback →
@@ -451,7 +392,7 @@ export default function LessonViewerPage() {
               <h3>Congratulations! Course Completed!</h3>
               <p>You have completed all lessons and satisfied all requirements for <strong>{course?.title}</strong>!</p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="banner-actions">
               <Link to="/my-learning" className="btn btn-sm btn-primary">
                 View My Learning
               </Link>
@@ -464,31 +405,18 @@ export default function LessonViewerPage() {
 
         {/* Lessons Completed but Required Assessments Pending Banner */}
         {bannerType === 'ASSESSMENTS_PENDING' && (
-          <div
-            className="completion-banner"
-            role="status"
-            aria-live="polite"
-            style={{
-              background: '#fef3c7',
-              borderColor: '#f59e0b',
-              color: '#92400e',
-            }}
-          >
+          <div className="completion-banner completion-banner--pending" role="status" aria-live="polite">
             <div className="banner-icon" aria-hidden="true">
               <UiIcon name="book-open" size={28} />
             </div>
             <div className="banner-text">
-              <h3 style={{ color: '#92400e' }}>All Lessons Completed!</h3>
-              <p style={{ color: '#78350f' }}>
+              <h3>All Lessons Completed!</h3>
+              <p>
                 Great work! To complete this course and earn your certificate, please complete the required course assessment(s).
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <Link
-                to={`/courses/${courseId}`}
-                className="btn btn-sm btn-primary"
-                style={{ background: '#b45309', borderColor: '#b45309', color: '#ffffff' }}
-              >
+            <div className="banner-actions">
+              <Link to={`/courses/${courseId}`} className="btn btn-sm btn-primary">
                 Go to Assessments →
               </Link>
             </div>

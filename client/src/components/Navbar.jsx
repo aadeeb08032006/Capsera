@@ -36,7 +36,6 @@ export default function Navbar() {
           </Link>
 
           <div className="navbar-links">
-            <Link to="/courses">Courses</Link>
             <Link to="/certificates/verify">Verify Certificate</Link>
           </div>
 

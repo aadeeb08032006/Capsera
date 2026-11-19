@@ -52,6 +52,7 @@ export const ADMIN_NAV_ITEMS = [
 export function isAdminPortalRoute(pathname) {
   if (typeof pathname !== 'string') return false;
   if (pathname === '/change-password') return true;
+  if (pathname === '/courses' || pathname.startsWith('/courses/')) return true;
   if (pathname.includes('/assessments/manage') || pathname.includes('/assessments/results')) {
     return true;
   }
