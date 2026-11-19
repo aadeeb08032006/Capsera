@@ -156,6 +156,22 @@ export function inferResourceTypeFromMime(mimeType) {
 }
 
 /**
+ * Infer canonical MIME type from a filename extension using ALLOWED_MIME_MAP.
+ */
+export function inferMimeTypeFromExtension(filename) {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  if (!ext) {
+    return null;
+  }
+  for (const [mimeType, entry] of ALLOWED_MIME_MAP.entries()) {
+    if (entry.extensions.includes(ext)) {
+      return mimeType;
+    }
+  }
+  return null;
+}
+
+/**
  * Build relative POSIX storage key inside the course uploads directory.
  */
 export function buildStorageKey(courseId, storedFilename) {

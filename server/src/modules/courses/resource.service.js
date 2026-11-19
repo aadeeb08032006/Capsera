@@ -11,6 +11,8 @@ import {
 } from './course.helpers.js';
 import {
   extractUploadedFileMetadata,
+  inferMimeTypeFromExtension,
+  normalizeMimeType,
   removeStoredFile,
   resolveSafeStoragePath,
   sanitizeOriginalFilename,
@@ -272,6 +274,7 @@ export async function getAuthorizedResourceDownload(courseId, resourceId, actor)
     if (!stat.isFile()) {
       throw new AppError(404, 'RESOURCE_FILE_NOT_FOUND', 'Resource file could not be found');
     }
+    await fs.promises.access(filePath, fs.constants.R_OK);
   } catch (error) {
     if (error instanceof AppError) {
       throw error;
@@ -279,10 +282,17 @@ export async function getAuthorizedResourceDownload(courseId, resourceId, actor)
     throw new AppError(404, 'RESOURCE_FILE_NOT_FOUND', 'Resource file could not be found');
   }
 
+  const downloadName = sanitizeOriginalFilename(resource.original_filename || 'resource');
+  const storedMime = normalizeMimeType(resource.mime_type);
+  const resolvedMime =
+    storedMime && storedMime !== 'application/octet-stream'
+      ? storedMime
+      : inferMimeTypeFromExtension(downloadName) || 'application/octet-stream';
+
   return {
     filePath,
-    mimeType: resource.mime_type || 'application/octet-stream',
-    downloadName: sanitizeOriginalFilename(resource.original_filename || 'resource'),
+    mimeType: resolvedMime,
+    downloadName,
   };
 }
 

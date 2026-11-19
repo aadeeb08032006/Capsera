@@ -22,6 +22,7 @@ export default function LessonViewerPage() {
   const [assessments, setAssessments] = useState([]);
   const [downloadingId, setDownloadingId] = useState(null);
   const [downloadError, setDownloadError] = useState(null);
+  const [downloadSuccess, setDownloadSuccess] = useState(null);
   const [enrollment, setEnrollment] = useState(null);
   const [completedLessonIds, setCompletedLessonIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -107,11 +108,19 @@ export default function LessonViewerPage() {
     return null;
   }, [lessons, currentLessonIndex]);
 
-  // Reset mark feedback on lesson switch
+  // Reset mark & download feedback on lesson switch
   useEffect(() => {
     setMarkSuccess(false);
     setMarkError(null);
+    setDownloadError(null);
+    setDownloadSuccess(null);
   }, [lessonId]);
+
+  useEffect(() => {
+    if (!downloadSuccess) return undefined;
+    const timer = window.setTimeout(() => setDownloadSuccess(null), 5500);
+    return () => window.clearTimeout(timer);
+  }, [downloadSuccess]);
 
   // Handle Mark Complete
   const handleMarkComplete = async () => {
@@ -161,11 +170,11 @@ export default function LessonViewerPage() {
     try {
       setDownloadingId(resource.id);
       setDownloadError(null);
-      await downloadResourceFile(
-        courseId,
-        resource.id,
-        resource.originalFilename || `${resource.title}.pdf`,
-      );
+      setDownloadSuccess(null);
+
+      const fallbackFilename = resource.originalFilename || resource.title || 'resource-file';
+      const result = await downloadResourceFile(courseId, resource.id, fallbackFilename);
+      setDownloadSuccess(`Downloaded "${result?.filename || fallbackFilename}" successfully.`);
     } catch (err) {
       setDownloadError(err.message || 'Failed to download file.');
     } finally {
@@ -466,6 +475,30 @@ export default function LessonViewerPage() {
                   <UiIcon name="alert-triangle" size={18} />
                 </span>
                 <div className="alert-body">{downloadError}</div>
+                <button
+                  type="button"
+                  className="form-alert-close"
+                  aria-label="Dismiss download error"
+                  onClick={() => setDownloadError(null)}
+                >
+                  <UiIcon name="x" size={15} />
+                </button>
+              </div>
+            )}
+            {downloadSuccess && (
+              <div className="form-alert alert-success" role="status">
+                <span className="alert-icon" aria-hidden="true">
+                  <UiIcon name="check" size={18} />
+                </span>
+                <div className="alert-body">{downloadSuccess}</div>
+                <button
+                  type="button"
+                  className="form-alert-close"
+                  aria-label="Dismiss download confirmation"
+                  onClick={() => setDownloadSuccess(null)}
+                >
+                  <UiIcon name="x" size={15} />
+                </button>
               </div>
             )}
             <ul className="resource-list">
