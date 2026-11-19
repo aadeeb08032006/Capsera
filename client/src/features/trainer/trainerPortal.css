@@ -176,10 +176,19 @@
 /* ─── Embedded Pages Inside Admin / Trainer / Trainee Portals ─── */
 .admin-portal-embedded > .profile-page,
 .admin-portal-embedded > .courses-page-container,
-.admin-portal-embedded > .assessment-container {
+.admin-portal-embedded > .assessment-container,
+.admin-portal-embedded > .lesson-viewer-layout {
   max-width: 100%;
   margin: 0;
   padding: 0;
+}
+
+.admin-portal-embedded > .lesson-viewer-layout {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  min-height: calc(100vh - 115px);
+  overflow: hidden;
+  background-color: #f7f8fc;
 }
 
 .admin-portal-embedded > .auth-centered-page {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   getCourseById,
   createCourse,
@@ -31,6 +31,7 @@ export const LEVEL_OPTIONS = [
 export default function CourseFormPage() {
   const { courseId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const isEditMode = Boolean(courseId);
 
   const [formData, setFormData] = useState({
@@ -50,6 +51,39 @@ export default function CourseFormPage() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+
+  // Consume one-time flash success state on navigation or clear stale messages on route transition
+  useEffect(() => {
+    const flash = location.state?.flashSuccess;
+    if (flash) {
+      setSuccessMsg(flash);
+      setError(null);
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
+
+    if (!isEditMode) {
+      setFormData({
+        title: '',
+        summary: '',
+        description: '',
+        subject: 'General',
+        level: 'BEGINNER',
+        thumbnailUrl: '',
+      });
+      setStatus('DRAFT');
+      setLoading(false);
+    }
+    setSuccessMsg(null);
+    setError(null);
+  }, [courseId, isEditMode]);
+
+  // Auto-dismiss temporary success feedback
+  useEffect(() => {
+    if (!successMsg) return undefined;
+    const timer = window.setTimeout(() => setSuccessMsg(null), 5500);
+    return () => window.clearTimeout(timer);
+  }, [successMsg]);
 
   // Load existing course details if in edit mode
   useEffect(() => {
@@ -145,8 +179,10 @@ export default function CourseFormPage() {
         setSuccessMsg('Course details saved successfully!');
       } else {
         const created = await createCourse(payload);
-        setSuccessMsg('Course created successfully! Redirecting...');
-        navigate(`/trainer/courses/${created.id}/edit`, { replace: true });
+        navigate(`/trainer/courses/${created.id}/edit`, {
+          replace: true,
+          state: { flashSuccess: 'Course created successfully! Add lessons or publish when ready.' },
+        });
       }
     } catch (err) {
       setError(err.message || 'Failed to save course. Please check inputs.');
@@ -213,14 +249,16 @@ export default function CourseFormPage() {
     <main className="courses-page-container">
       {/* Header & Breadcrumb */}
       <header className="course-form-header">
-        <div className="form-breadcrumbs">
-          <Link to="/trainer/courses">← Back to My Courses</Link>
-        </div>
+        <nav className="form-breadcrumbs" aria-label="Course breadcrumb">
+          <Link to="/trainer/courses">My Courses</Link>
+          <span aria-hidden="true">/</span>
+          <span>{isEditMode ? 'Edit Course' : 'Create Course'}</span>
+        </nav>
 
         <div className="form-header-main">
-          <div>
+          <div className="form-header-copy">
             <div className="header-status-row">
-              <span className="trainer-badge">Course Editor</span>
+              <h1>{isEditMode ? (formData.title || 'Untitled Course') : 'Create New Course'}</h1>
               {isEditMode && (
                 <span
                   className={`badge ${
@@ -235,11 +273,10 @@ export default function CourseFormPage() {
                 </span>
               )}
             </div>
-            <h1>{isEditMode ? `Edit Course: ${formData.title || 'Untitled'}` : 'Create New Course'}</h1>
             <p className="form-header-sub">
               {isEditMode
-                ? 'Update course metadata, manage publication status, or jump to lessons.'
-                : 'Fill in the course details below. You can add lessons after creating the draft.'}
+                ? 'Update course metadata, manage publication status, or organize syllabus lessons.'
+                : 'Define core metadata to create a draft course. You can add lessons and assessments next.'}
             </p>
           </div>
 
@@ -247,17 +284,23 @@ export default function CourseFormPage() {
             <div className="form-quick-links">
               <Link
                 to={`/trainer/courses/${courseId}/lessons`}
-                className="btn btn-secondary"
+                className="btn btn-secondary ui-inline"
               >
-                Manage Lessons →
+                <UiIcon name="book-open" size={15} />
+                Manage Lessons
+              </Link>
+              <Link
+                to={`/courses/${courseId}/assessments/manage`}
+                className="btn btn-secondary ui-inline"
+              >
+                <UiIcon name="bar-chart" size={15} />
+                Assessments
               </Link>
               <Link
                 to={`/courses/${courseId}`}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="btn btn-secondary ui-inline"
               >
-                Preview Public Page
+                Preview Course
                 <UiIcon name="external-link" size={14} />
               </Link>
             </div>
@@ -274,6 +317,14 @@ export default function CourseFormPage() {
           <div className="alert-body">
             <strong>Error:</strong> {error}
           </div>
+          <button
+            type="button"
+            className="form-alert-close"
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+          >
+            <UiIcon name="x" size={14} />
+          </button>
         </div>
       )}
 
@@ -283,6 +334,14 @@ export default function CourseFormPage() {
             <UiIcon name="check-circle" size={18} />
           </span>
           <div className="alert-body">{successMsg}</div>
+          <button
+            type="button"
+            className="form-alert-close"
+            onClick={() => setSuccessMsg(null)}
+            aria-label="Dismiss notification"
+          >
+            <UiIcon name="x" size={14} />
+          </button>
         </div>
       )}
 
@@ -428,9 +487,10 @@ export default function CourseFormPage() {
           <div className="actions-left">
             <button
               type="submit"
-              className="btn btn-primary btn-lg"
+              className="btn btn-primary ui-inline"
               disabled={saving || publishing || archiving}
             >
+              <UiIcon name="check" size={15} />
               {saving
                 ? 'Saving...'
                 : isEditMode
@@ -438,7 +498,7 @@ export default function CourseFormPage() {
                 : 'Create Course (Save Draft)'}
             </button>
 
-            <Link to="/trainer/courses" className="btn btn-secondary btn-lg">
+            <Link to="/trainer/courses" className="btn btn-ghost">
               Cancel
             </Link>
           </div>
@@ -449,11 +509,12 @@ export default function CourseFormPage() {
               {status !== 'PUBLISHED' && (
                 <button
                   type="button"
-                  className="btn btn-success btn-lg"
+                  className="btn btn-publish ui-inline"
                   disabled={publishing || saving || archiving}
                   onClick={handlePublish}
                   title="Make this course live for trainees in the catalogue"
                 >
+                  <UiIcon name="check-circle" size={15} />
                   {publishing ? 'Publishing...' : 'Publish Course'}
                 </button>
               )}
@@ -462,12 +523,12 @@ export default function CourseFormPage() {
               {status !== 'ARCHIVED' && (
                 <button
                   type="button"
-                  className="btn btn-danger btn-lg ui-inline"
+                  className="btn btn-danger-outline ui-inline"
                   disabled={archiving || saving || publishing}
                   onClick={() => setShowArchiveConfirm(true)}
                   title="Archive course to retire it from new enrollments"
                 >
-                  <UiIcon name="archive" size={17} />
+                  <UiIcon name="archive" size={15} />
                   Archive Course
                 </button>
               )}
