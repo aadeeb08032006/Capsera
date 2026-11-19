@@ -6,12 +6,12 @@ This runbook supports an **8–10 minute full academic demonstration** (plus a *
 
 ## 1. Local Demo Startup & Environment
 
-Start the backend against `capsera_demo` (using port `5002` when macOS ControlCenter occupies `5000` or another local process occupies `5001`):
+Start the backend against `capsera_demo` using your own PostgreSQL role via `DB_USER` (defaults below to your OS username `$USER`; replace with your local PostgreSQL username if different, and use port `5002` when macOS ControlCenter occupies `5000` or another local process occupies `5001`):
 
 ```bash
 # Terminal 1 — Backend API connected to capsera_demo
 DATABASE_URL="" NODE_ENV=development PORT=5002 CLIENT_ORIGIN=http://localhost:5173 \
-  DB_NAME=capsera_demo DB_USER=anubhav_01 node server/src/index.js
+  DB_NAME=capsera_demo DB_USER="${DB_USER:-$USER}" node server/src/index.js
 
 # Terminal 2 — Vite Frontend proxying /api/v1 -> http://127.0.0.1:5002
 VITE_API_BASE_URL=/api/v1 VITE_DEV_PROXY_TARGET=http://127.0.0.1:5002 npm --prefix client run dev -- --port 5173 --strictPort
@@ -33,9 +33,13 @@ Open **three browser windows or profiles** (or 1 regular + 1 incognito window) s
 
 ## 3. Seeded Demo Accounts (Synthetic `@example.com`)
 
-Passwords are set via environment variables (`ADMIN_PASSWORD` for Admin; `DEMO_PASSWORD` for all seeded `@example.com` demo users). Do not store or display plaintext passwords in slides.
+**Initial seeding vs. active passwords:**
+- **Initial seeding (teammate local setups):** When seeding a fresh `capsera_demo` database, initial passwords are supplied via environment variables (`ADMIN_PASSWORD` for Admin; `DEMO_PASSWORD` for all seeded `@example.com` demo users). Teammates who do not have access to the primary presenter's macOS Keychain should set their own `ADMIN_PASSWORD` and `DEMO_PASSWORD` when running `seed:admin` and `seed:demo` locally.
+- **Rotated active passwords (this demo machine):** After initial seeding, the active demo account passwords on this machine were rotated and are stored securely in **macOS Keychain** (never print, commit, or display plaintext passwords in slides or logs):
+  - `CAPSERA Demo Admin` / `admin@example.com`
+  - `CAPSERA Demo Users` / `demo-users`
 
-| Role | Email | Status | Password Env Var | Demo Purpose |
+| Role | Email | Status | Initial Seed Env Var | Demo Purpose |
 |---|---|---|---|---|
 | `ADMIN` | `admin@example.com` | `ACTIVE` | `ADMIN_PASSWORD` | Dashboard metrics, approvals, skills, announcements |
 | `TRAINER` | `demo-trainer-2@example.com` | `ACTIVE` | `DEMO_PASSWORD` | Author of *Weather Data Analysis with Python* (Published) & *Visualizing Climate Trends* (Draft) |
@@ -51,7 +55,7 @@ Passwords are set via environment variables (`ADMIN_PASSWORD` for Admin; `DEMO_P
 ## 4. Full 8–10 Minute Walkthrough
 
 ### Part A — Admin Governance & Platform Overview (~2.5 min)
-1. **Log in as Admin** (`admin@example.com` / `$ADMIN_PASSWORD`).
+1. **Log in as Admin** (`admin@example.com` using the active Admin password — `$ADMIN_PASSWORD` on a fresh local seed, or `CAPSERA Demo Admin` / `admin@example.com` in macOS Keychain on this machine).
    - *Expected:* Redirects to `/admin/dashboard` with live PostgreSQL KPI cards (users, courses, enrollments, certificates, assessment performance).
 2. **Approve a Pending User:** Click **User Management** (`/admin/users`, defaults to `PENDING`). Click **Approve** on `demo-pending-trainee@example.com`.
    - *Expected:* Success notice appears; switching Status to `ACTIVE` shows the user as `ACTIVE` and persists on reload.
@@ -61,7 +65,7 @@ Passwords are set via environment variables (`ADMIN_PASSWORD` for Admin; `DEMO_P
    - *Expected:* Appears immediately in the published feed on Trainee/Trainer dashboards.
 
 ### Part B — Trainer Authoring & Assessment Builder (~2 min)
-5. **Log in as Trainer** (`demo-trainer-2@example.com` / `$DEMO_PASSWORD`).
+5. **Log in as Trainer** (`demo-trainer-2@example.com` using the active demo user password — `$DEMO_PASSWORD` on a fresh local seed, or `CAPSERA Demo Users` / `demo-users` in macOS Keychain on this machine).
    - *Expected:* Trainer Dashboard (`/`) shows authored courses count, published/draft counts, expertise count, and published announcements.
 6. **Inspect Courses, Lessons & Resources:** Click **My Courses** (`/trainer/courses`) -> open **Manage Lessons** on **Weather Data Analysis with Python**.
    - *Expected:* Shows 3 ordered lessons and 2 attached study resources (and *Visualizing Climate Trends* in `DRAFT` status).
@@ -69,7 +73,7 @@ Passwords are set via environment variables (`ADMIN_PASSWORD` for Admin; `DEMO_P
    - *Expected:* Navigates to `/courses/:id/assessments/manage` and displays published **Python Weather Data Proficiency Check** (15 min, 3 MCQs, 60% pass threshold).
 
 ### Part C — Trainee Learning, Assessment, Certificate & Matching (~4.5 min)
-8. **Log in as Trainee** (`demo-trainee-1@example.com` / `$DEMO_PASSWORD`).
+8. **Log in as Trainee** (`demo-trainee-1@example.com` using the active demo user password — `$DEMO_PASSWORD` on a fresh local seed, or `CAPSERA Demo Users` / `demo-users` in macOS Keychain on this machine).
    - *Expected:* Trainee Dashboard (`/`) displays mapped skills, empty enrollment prompt, and live announcements.
 9. **Browse Catalogue & Enroll:** Click **Course Catalogue** (`/courses`) -> open **Weather Data Analysis with Python** -> click **Enroll in Course**.
    - *Expected:* Badge updates to `Enrolled`; lessons and quiz unlock.
