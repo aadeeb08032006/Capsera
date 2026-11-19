@@ -104,7 +104,7 @@ If time is limited or a live step is interrupted:
 
 - **If a live step fails:** Use `demo-trainee-3@example.com` (already completed Course B with certificate `CAP-3135-4F07-382B`) and `demo-trainee-2@example.com` (already `33%` progress on Course A) as instant backups.
 - **How to rerun cleanly against `capsera_demo`:**
-  1. Re-running `DATABASE_URL="" NODE_ENV=development DB_NAME=capsera_demo node server/scripts/seed-demo-content.js` is idempotent and will never create duplicate skills, courses, lessons, quizzes, or announcements.
+  1. Re-running `DATABASE_URL="" NODE_ENV=development DB_NAME=capsera_demo node server/scripts/seed-demo-content.js` is idempotent and non-destructive: it skips existing records (never creating duplicate skills, courses, lessons, quizzes, or announcements) and preserves any existing trainer/trainee competency mappings, lesson progress, and trainee feedback edits.
   2. To reset only `demo-trainee-1` and `demo-pending-trainee` before another rehearsal, remove `demo-trainee-1`'s Course A enrollment/attempt/certificate rows in `capsera_demo` and set `demo-pending-trainee@example.com` back to `PENDING` (never drop or touch `capsera_db` or `capsera_cp03_test`).
 
 ---

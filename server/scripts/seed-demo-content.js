@@ -260,6 +260,68 @@ async function ensureAnnouncement(adminActor, spec) {
   return String(created.id);
 }
 
+const INITIAL_SKILL_ROLE_CONFIG = {
+  TRAINER: {
+    checkSql: 'SELECT 1 FROM trainer_skills WHERE trainer_id = $1 LIMIT 1',
+    replaceFn: replaceMyTrainerSkills,
+  },
+  TRAINEE: {
+    checkSql: 'SELECT 1 FROM trainee_skills WHERE trainee_id = $1 LIMIT 1',
+    replaceFn: replaceMyTraineeSkills,
+  },
+};
+
+/**
+ * Seed initial competency mappings ONLY when the user currently has zero mapped skills,
+ * preserving user edits or additions on subsequent reruns.
+ */
+async function ensureInitialSkillsIfEmpty(roleKey, userId, skills) {
+  const config = INITIAL_SKILL_ROLE_CONFIG[roleKey];
+  if (!config) {
+    throw new Error(`Unsupported skill seeding role: ${roleKey}`);
+  }
+  const existing = await executeQuery(config.checkSql, [userId]);
+  if (existing.rows.length > 0) {
+    return false;
+  }
+  await config.replaceFn(userId, skills);
+  return true;
+}
+
+/**
+ * Record lesson completion ONLY when the enrollment is not cancelled and the lesson is not yet recorded.
+ */
+async function ensureLessonCompleted(enrollment, lessonId, trainee) {
+  if (enrollment.status === 'CANCELLED') {
+    return false;
+  }
+  const existing = await executeQuery(
+    'SELECT 1 FROM lesson_progress WHERE enrollment_id = $1 AND lesson_id = $2 LIMIT 1',
+    [enrollment.id, lessonId],
+  );
+  if (existing.rows.length > 0) {
+    return false;
+  }
+  await markLessonComplete(enrollment.id, lessonId, trainee);
+  return true;
+}
+
+/**
+ * Seed initial course feedback ONLY if the trainee has not already submitted feedback for the course,
+ * preserving existing ratings and review comments on reruns.
+ */
+async function ensureCourseFeedback(courseId, payload, trainee) {
+  const existing = await executeQuery(
+    'SELECT id FROM feedback WHERE course_id = $1 AND trainee_id = $2 LIMIT 1',
+    [courseId, trainee.id],
+  );
+  if (existing.rows.length > 0) {
+    return String(existing.rows[0].id);
+  }
+  const result = await upsertCourseFeedback(courseId, payload, trainee);
+  return String(result.feedback?.id ?? '');
+}
+
 export async function seedDemoContent() {
   if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') {
     throw new Error('Demo content seeding is disabled when NODE_ENV=production');
@@ -287,26 +349,26 @@ export async function seedDemoContent() {
     skillMap[s.name] = ensured;
   }
 
-  // 2. Trainer & trainee competency mappings (deterministic recommendation support; proficiency 1-4)
-  await replaceMyTrainerSkills(trainer1.id, [
+  // 2. Trainer & trainee competency mappings (seeded non-destructively only if empty)
+  await ensureInitialSkillsIfEmpty('TRAINER', trainer1.id, [
     { skillId: skillMap['Weather Forecasting'].id, proficiency: 4, yearsOfExperience: 8.5 },
     { skillId: skillMap['Remote Sensing Fundamentals'].id, proficiency: 4, yearsOfExperience: 6.0 },
     { skillId: skillMap['Climate Data Analysis'].id, proficiency: 3, yearsOfExperience: 4.0 },
   ]);
 
-  await replaceMyTrainerSkills(trainer2.id, [
+  await ensureInitialSkillsIfEmpty('TRAINER', trainer2.id, [
     { skillId: skillMap['Python for Meteorological Data'].id, proficiency: 4, yearsOfExperience: 6.0 },
     { skillId: skillMap['Data Visualization'].id, proficiency: 4, yearsOfExperience: 5.5 },
     { skillId: skillMap['Climate Data Analysis'].id, proficiency: 4, yearsOfExperience: 4.5 },
     { skillId: skillMap['Weather Forecasting'].id, proficiency: 3, yearsOfExperience: 2.5 },
   ]);
 
-  await replaceMyTraineeSkills(trainee1.id, [
+  await ensureInitialSkillsIfEmpty('TRAINEE', trainee1.id, [
     { skillId: skillMap['Python for Meteorological Data'].id, proficiency: 2 },
     { skillId: skillMap['Data Visualization'].id, proficiency: 2 },
   ]);
 
-  await replaceMyTraineeSkills(trainee2.id, [
+  await ensureInitialSkillsIfEmpty('TRAINEE', trainee2.id, [
     { skillId: skillMap['Weather Forecasting'].id, proficiency: 2 },
     { skillId: skillMap['Climate Data Analysis'].id, proficiency: 1 },
   ]);
@@ -516,18 +578,18 @@ export async function seedDemoContent() {
     ],
   });
 
-  // 4. Enrollment & progress states through actual domain services
+  // 4. Enrollment & progress states through actual domain services (non-destructive on reruns)
   // Demo Trainee Two -> partial progress on Course A (Lesson 1 of 3 complete = 33%)
   const t2CourseA = await ensureEnrollment(courseA.courseId, trainee2);
-  await markLessonComplete(t2CourseA.id, courseA.lessonIds[0], trainee2);
+  await ensureLessonCompleted(t2CourseA, courseA.lessonIds[0], trainee2);
 
   // Demo Trainee Three -> full completion on Course B + real auto-issued certificate + feedback
   const t3CourseB = await ensureEnrollment(courseB.courseId, trainee3);
   for (const lid of courseB.lessonIds) {
-    await markLessonComplete(t3CourseB.id, lid, trainee3);
+    await ensureLessonCompleted(t3CourseB, lid, trainee3);
   }
   await ensurePassedAttempt(courseB.assessmentId, trainee3, ['A', 'A', 'B']);
-  await upsertCourseFeedback(
+  await ensureCourseFeedback(
     courseB.courseId,
     {
       rating: 5,
