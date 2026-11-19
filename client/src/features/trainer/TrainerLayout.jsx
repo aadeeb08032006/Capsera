@@ -64,6 +64,7 @@ export const TRAINER_NAV_ITEMS = [
 export function isTrainerPortalRoute(pathname) {
   if (typeof pathname !== 'string') return false;
   if (pathname === '/change-password') return true;
+  if (pathname === '/courses' || pathname.startsWith('/courses/')) return true;
   return TRAINER_NAV_ITEMS.some((item) => item.match(pathname));
 }
 
@@ -185,7 +186,7 @@ export default function TrainerLayout({
               <span className="admin-sidebar-promo-badge">CAPSERA LMS</span>
               <CapseraCubeLogo />
             </div>
-            <p className="admin-sidebar-promo-title">Public Course Catalogue</p>
+            <p className="admin-sidebar-promo-title">Course Catalogue</p>
             <p className="admin-sidebar-promo-copy">
               Preview how trainees discover and enroll in published training tracks.
             </p>

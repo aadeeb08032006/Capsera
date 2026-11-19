@@ -34,6 +34,7 @@ app.use(helmet());
 app.use(
   cors({
     origin: env.clientOrigin,
+    exposedHeaders: ['Content-Disposition', 'Content-Type'],
   }),
 );
 // Set app.set('trust proxy', 1) only behind a known trusted proxy so rate limits use client IPs.
