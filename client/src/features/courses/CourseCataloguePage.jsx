@@ -79,7 +79,7 @@ export default function CourseCataloguePage() {
   return (
     <main className="courses-page-container">
       <header className="courses-catalogue-header">
-        <span className="courses-badge-pill">Public Directory</span>
+        <span className="courses-badge-pill">Course Directory</span>
         <h1>Course Catalogue</h1>
         <p className="courses-subtitle">
           Explore organizational capacity-building courses, syllabus modules, and learning tracks.

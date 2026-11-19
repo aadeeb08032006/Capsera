@@ -353,24 +353,28 @@ export default function App() {
         <Route
           path="/courses"
           element={
-            <RolePortalShell sectionLabel="Course Catalogue" roles={['TRAINEE']}>
-              <CourseCataloguePage />
-            </RolePortalShell>
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
+              <RolePortalShell sectionLabel="Course Catalogue" roles={['ADMIN', 'TRAINER', 'TRAINEE']}>
+                <CourseCataloguePage />
+              </RolePortalShell>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/courses/:courseId"
           element={
-            <RolePortalShell sectionLabel="Course Overview" roles={['TRAINEE']}>
-              <CourseDetailPage />
-            </RolePortalShell>
+            <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
+              <RolePortalShell sectionLabel="Course Overview" roles={['ADMIN', 'TRAINER', 'TRAINEE']}>
+                <CourseDetailPage />
+              </RolePortalShell>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/courses/:courseId/lessons/:lessonId"
           element={
             <ProtectedRoute allowedRoles={['TRAINEE', 'TRAINER', 'ADMIN']}>
-              <RolePortalShell sectionLabel="Lesson Viewer" roles={['TRAINEE']}>
+              <RolePortalShell sectionLabel="Lesson Viewer" roles={['ADMIN', 'TRAINER', 'TRAINEE']}>
                 <LessonViewerPage />
               </RolePortalShell>
             </ProtectedRoute>
