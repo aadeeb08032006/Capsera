@@ -1,4 +1,5 @@
 import { apiRequest, API_BASE_URL, TOKEN_STORAGE_KEY } from '../../services/apiClient.js';
+import { executeResourceDownload } from './resourceDownloadHelpers.js';
 
 /**
  * Courses API Service
@@ -164,28 +165,19 @@ export async function deleteResource(courseId, resourceId, options = {}) {
 export async function downloadResourceFile(courseId, resourceId, fallbackFilename = 'resource-file') {
   const token = typeof window !== 'undefined' ? sessionStorage.getItem(TOKEN_STORAGE_KEY) : null;
 
-  const url = `${API_BASE_URL}/courses/${courseId}/resources/${resourceId}/download`;
-  const response = await fetch(url, {
-    credentials: 'include',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  return executeResourceDownload({
+    courseId,
+    resourceId,
+    fallbackFilename,
+    token,
+    apiBaseUrl: API_BASE_URL,
+    onUnauthorized: () => {
+      if (typeof window !== 'undefined' && token) {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        window.dispatchEvent(new CustomEvent('capsera:unauthorized'));
+      }
     },
   });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.error?.message || `Download failed with status ${response.status}`);
-  }
-
-  const blob = await response.blob();
-  const blobUrl = window.URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = blobUrl;
-  anchor.download = fallbackFilename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.URL.revokeObjectURL(blobUrl);
 }
 
 // ============================================================================
